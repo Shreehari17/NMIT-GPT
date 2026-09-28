@@ -4,21 +4,15 @@ import os
 
 load_dotenv()
 
+
 MODEL = os.getenv("GROQ_LLM_MODEL", "llama-3.1-8b-instant")
 
-GROQ_API_KEY_ANSWER = os.getenv("GROQ_API_KEY_ANSWER")
-GROQ_API_KEY_PARSER = os.getenv("GROQ_API_KEY_PARSER")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not GROQ_API_KEY_ANSWER:
-    raise ValueError("GROQ_API_KEY_ANSWER is not set in environment variables")
-if not GROQ_API_KEY_PARSER:
-    raise ValueError("GROQ_API_KEY_PARSER is not set in environment variables")
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY is not set in environment variables")
 
-# Answering LLM — uses Key 1
-client = Groq(api_key=GROQ_API_KEY_ANSWER)
-
-# Parser LLM — uses Key 2
-parser_client = Groq(api_key=GROQ_API_KEY_PARSER)
+client = Groq(api_key=GROQ_API_KEY)
 
 
 def generate_llm_answer(prompt: str, chat_history: list = None) -> str:
@@ -51,7 +45,8 @@ Be concise and direct."""
 
     response = client.chat.completions.create(  # uses GROQ_API_KEY_ANSWER
         model=MODEL,
-        max_tokens=400,
+        max_completion_tokens=1200,  
+        reasoning_effort="low",       
         messages=messages,
     )
     return response.choices[0].message.content

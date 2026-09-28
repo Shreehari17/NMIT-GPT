@@ -804,7 +804,7 @@ def retrieve_chunks(params: dict) -> list:
     return format_calendar_chunks(data, params=params)
 
 
-def format_faculty_chunks(data: list, compact: bool = False) -> list:
+def format_faculty_chunks(data: list, compact: bool = False, minimal: bool = False) -> list:
     """Convert faculty_biodata rows into clean text chunks for the LLM."""
     chunks = []
     for f in data:
@@ -814,6 +814,19 @@ def format_faculty_chunks(data: list, compact: bool = False) -> list:
                 f"Designation: {f.get('designation')} | "
                 f"Department: {f.get('department')}"
             )
+        elif minimal:
+            lines = []
+            if f.get("name"): lines.append(f"Name: {f['name']}")
+            if f.get("faculty_shortform"): lines.append(f"Initials: {f['faculty_shortform']}")
+            if f.get("designation"): lines.append(f"Designation: {f['designation']}")
+            if f.get("department"): lines.append(f"Department: {f['department']}")
+            if f.get("email"):
+                email = f["email"]
+                if isinstance(email, list): email = ", ".join(email)
+                lines.append(f"Email: {email}")
+            if f.get("past_experience"): lines.append(f"Past Experience: {f['past_experience']}")
+            if f.get("areas_of_interest"): lines.append(f"Interests: {f['areas_of_interest']}")
+            text = "\n".join(lines)
         else:
             lines = []
             if f.get("name"):
@@ -827,7 +840,7 @@ def format_faculty_chunks(data: list, compact: bool = False) -> list:
             if f.get("email"):
                 email = f["email"]
                 if isinstance(email, list):
-                    email = ", ".join(email) 
+                    email = ", ".join(email)
                 lines.append(f"Email: {email}")
             if f.get("joining_date"):
                 lines.append(f"Joining Date: {f['joining_date']}")
@@ -852,7 +865,6 @@ def format_faculty_chunks(data: list, compact: bool = False) -> list:
                 lines.append(f"ORCID ID: {f['orcid_id']}")
             if f.get("linkedin_id"):
                 lines.append(f"LinkedIn: {f['linkedin_id']}")
-
             text = "\n".join(lines)
 
         chunks.append({

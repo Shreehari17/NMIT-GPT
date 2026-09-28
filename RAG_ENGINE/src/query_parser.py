@@ -1,11 +1,10 @@
-from .llm_interface import parser_client, MODEL
+from .llm_interface import MODEL
 from .db import get_supabase_client
-from groq import Groq
-from dotenv import load_dotenv
-import os
 import json
-PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", "llama-3.1-8b-instant")
-GROQ_PARSER_KEY = os.getenv("GROQ_API_KEY_PARSER")
+import os
+from groq import Groq
+PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", MODEL)
+GROQ_PARSER_KEY = os.getenv("GROQ_PARSER_KEY")
 if not GROQ_PARSER_KEY:
     raise ValueError("GROQ_PARSER_KEY is not set in environment variables")
 
@@ -19,6 +18,7 @@ def _load_event_names() -> list:
         return []
 
 KNOWN_EVENT_NAMES = _load_event_names()
+
 
 PARSE_SYSTEM_PROMPT = """
 You are a query parser for NMIT college. Return ONLY valid JSON. No explanation, no markdown.
@@ -177,7 +177,8 @@ def parse_query(user_query: str, chat_history: list = None) -> dict:
 
     response = parser_client.chat.completions.create(
         model=PARSER_MODEL,
-        max_tokens=300,
+        max_completion_tokens=700,   # gpt-oss reasoning tokens share this budget
+        reasoning_effort="low",
         messages=[
             {"role": "system", "content": PARSE_SYSTEM_PROMPT},
             {"role": "user", "content": user_content}
