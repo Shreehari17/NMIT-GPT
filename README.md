@@ -1,2 +1,2 @@
-# FACULTY-GPT
+# NMIT-GPT
 AI-powered RAG system for faculty knowledge
