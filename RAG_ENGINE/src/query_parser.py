@@ -95,6 +95,26 @@ CIRCULAR RULES:
 - Questions about a circular, notice, dress code, hostel rules, campus rules, what is allowed/not allowed, instructions from the principal/college → intent:"circular"
 - Dates of exams/holidays/events from the academic calendar stay intent:"calendar"
 - "dress code for girls in hostel"→{"intent":"circular"} | "is there any circular about hostel timings"→{"intent":"circular"} | "can boys wear shorts on campus"→{"intent":"circular"}
+FOLLOW-UP / CONVERSATION RULES:
+
+- When the current query refers to a previously mentioned faculty member using a pronoun or follow-up phrase, use the Recent conversation to resolve the faculty member.
+- "her", "him", "his", "she", "he", "they", "their" refer to the most recently relevant faculty member mentioned in the conversation.
+- "tell me more about her", "tell me more about him", "tell me more", "what about her", "what about him", "elaborate", and similar follow-up queries must preserve the previously identified faculty_name.
+- If the previous conversation identified a faculty member, set faculty_name to that person's actual name even if the current query does not contain the name.
+- Do NOT return faculty_name:null when the Recent conversation clearly identifies the faculty member being referred to.
+- Do not infer a new faculty member if the reference is ambiguous.
+
+Example:
+Recent conversation:
+User: Who is the HOD of CSE department?
+Assistant: The HOD of CSE is Dr. Vijaya Shetty S.
+
+Current query:
+Tell me more about her
+
+Output:
+{"intent":"faculty","faculty_name":"Vijaya Shetty","designation":null,"department":null,"direct_field":null,"is_list_query":false}
+
 
 CALENDAR RULES:
 - Specific date→date:"YYYY-MM-DD" | month only→month:"YYYY-MM" | current year:2026
@@ -173,7 +193,7 @@ def parse_query(user_query: str, chat_history: list = None) -> dict:
     
     history_context = ""
     if chat_history and needs_history:
-        recent = chat_history[-2:] 
+        recent = chat_history[-4:] 
         for msg in recent:
             role = "User" if msg["role"] == "user" else "Assistant"
             content = msg['content'][:150]  

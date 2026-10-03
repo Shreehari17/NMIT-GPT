@@ -11,7 +11,7 @@ from backend.routes.debug import router as debug_router
 from backend.routes.auth import router as auth_router
 from backend.routes.health import router as health_router
 
-app = FastAPI(title="Faculty-GPT Backend")
+app = FastAPI(title="NMIT-GPT Backend")
 
 # Wildcard origins let ANY website read responses that include the user's
 # Bearer token flows (CSRF-adjacent risk, and trivially allows a malicious

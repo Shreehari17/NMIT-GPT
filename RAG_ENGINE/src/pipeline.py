@@ -1069,9 +1069,23 @@ def answer_query(
     # ----------------------------------------------------
 
         raw_data = query_faculty(
-            parsed
+        parsed
         )
 
+        # ----------------------------------------------------
+        # DIRECT HOD ANSWER
+        # ----------------------------------------------------
+
+        if (
+            parsed.get("designation")
+            and parsed.get("designation").lower() == "head of department"
+            and raw_data
+            ):
+            return {
+                "query": user_query,
+                "answer": f"The HOD of {parsed.get('department', 'the department')} is {raw_data[0]['name']}.",
+                "chunks_used": []
+                }
     # ----------------------------------------------------
     # FORMAT FACULTY RESULTS
     # ----------------------------------------------------
@@ -1091,6 +1105,23 @@ def answer_query(
             compact=is_compact,
             minimal=is_minimal
         )
+        # ----------------------------------------------------
+# DIRECT FACULTY PROFILE
+# ----------------------------------------------------
+
+        if (
+        parsed.get("faculty_name")
+        and not parsed.get("direct_field")
+        and not parsed.get("designation")
+        and not parsed.get("query_type")
+        and not parsed.get("is_list_query")
+        and raw_data
+        ):
+            return {
+                "query": user_query,
+                "answer": chunks[0]["content"],
+                "chunks_used": chunks
+            }
 
     # ----------------------------------------------------
     # COUNT
@@ -1460,11 +1491,6 @@ def answer_query(
     import re
     
     answer = re.sub(r'(\d)\n(\d)', r'\1\2', answer)
-
-    answer = generate_llm_answer(
-        prompt,
-        chat_history=chat_history
-    )
 
     print(
         f"LLM TIME: "
