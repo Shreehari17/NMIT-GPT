@@ -7,8 +7,10 @@ from pipeline.load_to_db import (
     fetch_all_labs,
     insert_embeddings,
     fetch_embedded_faculty_ids,
-    fetch_embedded_lab_ids
+    fetch_embedded_lab_ids,
+    delete_circular_embeddings
 )
+from pipeline.utils import make_circular_id, readable_date
 
 load_dotenv()
 model = SentenceTransformer(os.getenv("EMBEDDING_MODEL"))
@@ -196,3 +198,109 @@ def embed_labs():
         print(f"Embedded {len(records)} lab chunks")
     else:
         print("No new lab chunks to embed")
+
+
+# ============================================================
+# CIRCULARS
+# ============================================================
+import re
+
+def _split_sections(full_text):
+    """'## Heading' lines start a new section -> [(heading, body), ...]"""
+    sections, heading, buf = [], "Overview", []
+
+    def flush():
+        body = "\n".join(buf).strip()
+        if body:
+            sections.append((heading, body))
+
+    for line in full_text.splitlines():
+        m = re.match(r"^\s*#{1,3}\s*(.+?)\s*$", line)
+        if m:
+            flush()
+            heading, buf[:] = m.group(1), []
+        else:
+            buf.append(line)
+    flush()
+    return sections
+
+
+def _split_long(body, limit=1200):
+    if len(body) <= limit:
+        return [body]
+    parts, cur = [], ""
+    for line in body.splitlines():
+        if cur and len(cur) + len(line) + 1 > limit:
+            parts.append(cur.strip())
+            cur = ""
+        cur += line + "\n"
+    if cur.strip():
+        parts.append(cur.strip())
+    return parts
+
+
+def build_circular_chunks(row):
+    """[(chunk_type, text, section_heading), ...]
+
+    Every chunk starts with the circular's title / number / date / audience so a line
+    such as "Shorts above knee are not allowed" is embedded together with WHO it
+    applies to (e.g. 'For Boy Hostellers')."""
+    head = f"Circular: {row['title']}"
+    if row.get("circular_no"):
+        head += f" (No. {row['circular_no']})"
+    if row.get("circular_date"):
+        head += f", dated {readable_date(row['circular_date'])}"
+    if row.get("applies_to"):
+        head += f". Applies to: {row['applies_to']}"
+
+    chunks = []
+    if row.get("summary"):
+        chunks.append(("00_summary", f"{head}. Summary: {row['summary']}", "Summary"))
+
+    n = 1
+    for heading, body in _split_sections(row["full_text"]):
+        for piece in _split_long(body):
+            slug = re.sub(r"[^a-z0-9]+", "_", heading.lower()).strip("_")[:30] or "section"
+            chunks.append((f"{n:02d}_{slug}", f"{head}. Section: {heading}.\n{piece}", heading))
+            n += 1
+    return chunks
+
+
+def embed_circular(row):
+    """Chunk + embed one admin-approved circular into unified_embeddings.
+    Re-uploading the same circular replaces its old vectors."""
+    circular_id = make_circular_id(row.get("circular_no"), row.get("title"), row.get("circular_date"))
+    chunks = build_circular_chunks(row)
+    if not chunks:
+        raise ValueError("Nothing to embed - the circular body is empty.")
+
+    # encode first: if the model fails, the old version is left untouched
+    vectors = model.encode([text for _, text, _ in chunks]).tolist()
+
+    records = []
+    for idx, ((chunk_type, text, heading), vec) in enumerate(zip(chunks, vectors)):
+        records.append({
+            "source_type": "circular",
+            "source_id": circular_id,
+            "chunk_type": chunk_type,
+            "chunk_index": idx,
+            "raw_text": text,
+            "metadata": {
+                "entity": "circular",
+                "circular_id": circular_id,
+                "circular_no": row.get("circular_no") or "",
+                "title": row["title"],
+                "category": row.get("category") or "general",
+                "circular_date": row.get("circular_date") or None,
+                "issued_by": row.get("issued_by") or "",
+                "applies_to": row.get("applies_to") or "",
+                "file_name": row.get("file_name") or "",
+                "section": heading,
+            },
+            "embedding": vec,
+        })
+
+    delete_circular_embeddings(circular_id)
+    insert_embeddings(records)
+    print(f"Embedded {len(records)} circular chunks ({circular_id})")
+    return {"circular_id": circular_id, "chunks": len(records)}

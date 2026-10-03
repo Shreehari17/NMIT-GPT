@@ -132,3 +132,43 @@ def clean_json_response(raw: str) -> str:
             raw = raw[4:]
     return raw.strip()
 
+
+
+# ---------------- Circulars ----------------
+import hashlib
+from datetime import datetime
+
+CIRCULAR_CATEGORIES = [
+    "dress_code", "hostel", "exam", "academic", "fees", "event",
+    "holiday", "placement", "transport", "library", "discipline", "general",
+]
+
+def normalize_date(value):
+    """Return YYYY-MM-DD or None."""
+    if not value:
+        return None
+    s = str(value).strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    s = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", s, flags=re.I)
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%d %B %Y", "%d %b %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+def readable_date(iso):
+    try:
+        return datetime.strptime(iso, "%Y-%m-%d").strftime("%d %B %Y").lstrip("0")
+    except (TypeError, ValueError):
+        return ""
+
+def make_circular_id(circular_no, title, circular_date):
+    """Deterministic id (goes in unified_embeddings.source_id, max 50 chars).
+    Uploading the same circular again therefore REPLACES the old vectors."""
+    key = (circular_no or "").strip().lower()
+    if not key:
+        key = f"{(title or '').strip().lower()}|{circular_date or ''}"
+    key = re.sub(r"\s+", "", key)
+    return "CIR-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]

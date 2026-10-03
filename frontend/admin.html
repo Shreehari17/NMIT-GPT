@@ -244,19 +244,24 @@
     circulars: {
       label: 'Circulars',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>`,
-      description: 'Upload a circular (PDF). Review the extracted title, category and summary before saving.',
-      implemented: false,
+      description: 'Upload a circular (PDF). Gemini reads it; review the details and the body text (sections start with ##), then save. It is stored as searchable vectors so the chatbot can answer from it.',
+      implemented: true,
       extractUrl: `${API_BASE}/admin/circulars/extract`,
       saveUrl: `${API_BASE}/admin/circulars/save`,
       accept: '.pdf',
+      eventTypes: ['dress_code','hostel','exam','academic','fees','event','holiday','placement','transport','library','discipline','general'],
       columns: [
-        { key: 'title', label: 'Title', type: 'text' },
-        { key: 'category', label: 'Category', type: 'text', width: '130px' },
-        { key: 'circular_date', label: 'Date', type: 'date', width: '140px' },
-        { key: 'description', label: 'Summary', type: 'text' },
+        { key: 'circular_no', label: 'Circular No.', type: 'text', width: '170px' },
+        { key: 'title', label: 'Title', type: 'text', width: '240px' },
+        { key: 'category', label: 'Category', type: 'select', width: '140px' },
+        { key: 'circular_date', label: 'Date', type: 'date', width: '130px' },
+        { key: 'applies_to', label: 'Applies to', type: 'text', width: '140px' },
+        { key: 'issued_by', label: 'Issued by', type: 'text', width: '170px' },
+        { key: 'summary', label: 'Summary', type: 'textarea', width: '260px' },
+        { key: 'full_text', label: 'Body text (## = section)', type: 'textarea', width: '460px' },
       ],
-      emptyRow: () => ({ id: uid(), title: '', category: 'General', circular_date: '', description: '' }),
-      isRowBad: () => false,
+      emptyRow: () => ({ id: uid(), circular_no: '', title: '', category: 'general', circular_date: '', applies_to: '', issued_by: '', summary: '', full_text: '', file_name: '' }),
+      isRowBad: (row, key) => (key === 'circular_date' && row.circular_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.circular_date)) || (key === 'title' && !row.title) || (key === 'full_text' && !row.full_text),
     },
   };
 
@@ -419,6 +424,9 @@
     const bad = m.isRowBad(row, c.key);
     if (c.type === 'checkbox') {
       return `<td class="checkbox-cell"><input type="checkbox" ${row[c.key] ? 'checked' : ''} onchange="updateCell(${i}, '${c.key}', this.checked)"></td>`;
+    }
+    if (c.type === 'textarea') {
+      return `<td class="${bad ? 'row-bad' : ''}"><textarea rows="8" oninput="updateCell(${i}, '${c.key}', this.value)" style="width:100%; min-width:${c.width || '260px'}; border:none; background:transparent; padding:9px 12px; font-size:12.5px; line-height:1.5; color:var(--text-primary); outline:none; font-family:inherit; resize:vertical;">${escapeHtml(row[c.key] ?? '')}</textarea></td>`;
     }
     if (c.type === 'select') {
       const options = m.eventTypes || [];

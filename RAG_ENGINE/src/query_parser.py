@@ -3,8 +3,8 @@ from .db import get_supabase_client
 import json
 import os
 from groq import Groq
-PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", MODEL)
-GROQ_PARSER_KEY = os.getenv("GROQ_PARSER_KEY")
+PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
+GROQ_PARSER_KEY = os.getenv("GROQ_API_KEY_PARSER")
 if not GROQ_PARSER_KEY:
     raise ValueError("GROQ_PARSER_KEY is not set in environment variables")
 
@@ -24,7 +24,7 @@ PARSE_SYSTEM_PROMPT = """
 You are a query parser for NMIT college. Return ONLY valid JSON. No explanation, no markdown.
 
 OUTPUT SCHEMA:
-{"intent":"timetable"|"subjects"|"faculty"|"lab"|"calendar"|"general","class":"6A"|null,"day":"Monday"|null,"period":"1"|"10:05"|null,"subject":"expanded name"|null,"faculty_name":"actual name"|null,"department":"CSE"|"ECE"|"ISE"|"MECH"|"EEE"|"CIVIL"|null,"designation":"head of department"|"professor"|"assistant professor"|"associate professor"|"adjunct professor"|null,"research_area":"topic"|null,"lab_name":"LAB9"|null,"lab_query_type":"structured"|"detail"|null,"is_lab_free_query":false,"min_computers":null,"max_computers":null,"lab_keyword":null,"lab_names":null,"date":"YYYY-MM-DD"|null,"month":"YYYY-MM"|null,"event_type":"holiday"|"registration"|"compensatory working days"|"co_curricular"|"teaching days"|"saturday holidays"|"general holidays"|"link holidays"|null,"event_name":"MSE-1"|"MSE-2"|"SEE (Theory)"|"SEE (Practicals)"|"Anaadyanta"|"Summer Vacations"|"Commencement of Classes"|"Last Working Day"|"CIE Ledger Submission"|"Registration Odd (5th & 7th) Semester"|null,"event_name_2":null,"date_from":null,"date_to":null,"is_college_open_query":false,"is_list_query":false,"query_type":"gap"|"overlap"|"duration"|"duration_each"|"count"|null,
+{"intent":"timetable"|"subjects"|"faculty"|"lab"|"calendar"|"circular"|"general","class":"6A"|null,"day":"Monday"|null,"period":"1"|"10:05"|null,"subject":"expanded name"|null,"faculty_name":"actual name"|null,"department":"CSE"|"ECE"|"ISE"|"MECH"|"EEE"|"CIVIL"|null,"designation":"head of department"|"professor"|"assistant professor"|"associate professor"|"adjunct professor"|null,"research_area":"topic"|null,"lab_name":"LAB9"|null,"lab_query_type":"structured"|"detail"|null,"is_lab_free_query":false,"min_computers":null,"max_computers":null,"lab_keyword":null,"lab_names":null,"date":"YYYY-MM-DD"|null,"month":"YYYY-MM"|null,"event_type":"holiday"|"registration"|"compensatory working days"|"co_curricular"|"teaching days"|"saturday holidays"|"general holidays"|"link holidays"|null,"event_name":"MSE-1"|"MSE-2"|"SEE (Theory)"|"SEE (Practicals)"|"Anaadyanta"|"Summer Vacations"|"Commencement of Classes"|"Last Working Day"|"CIE Ledger Submission"|"Registration Odd (5th & 7th) Semester"|null,"event_name_2":null,"date_from":null,"date_to":null,"is_college_open_query":false,"is_list_query":false,"query_type":"gap"|"overlap"|"duration"|"duration_each"|"count"|null,
     "free_period_query": true | false,          ← user asks about free/empty periods
     "faculty_timetable_query": true | false,    ← "what does Dr. X teach this week"
     "full_day_query": true | false,             ← "what's the schedule for 6A on Monday"
@@ -32,7 +32,7 @@ OUTPUT SCHEMA:
     "direct_field": "email"|"designation"|"department"|"experience"|"joining_date"|"google_scholar"|"orcid"|"linkedin"|null,
     "is_class_teacher_query": false}
 
-INTENT: timetable=schedule/period/timing | subjects=who teaches what/subjects/subject codes/list who teaches subject | faculty=profiles/HOD/count | lab=room/computers/config | calendar=holidays/events/exams | general=other
+INTENT: timetable=schedule/period/timing | subjects=who teaches what/subjects/subject codes/list who teaches subject | faculty=profiles/HOD/count | lab=room/computers/config | calendar=holidays/events/exams | circular=official circulars/notices/rules/policies issued by the college (dress code, hostel rules, discipline, instructions, announcements) | general=other
 
 TIMETABLE SUB-TYPES:
 - "schedule of 6A on Monday" / "what does 6A have on Tuesday" → full_day_query: true, class: "6A", day: "Monday"
@@ -91,6 +91,11 @@ FACULTY RULES:
 - "X experience/exp" → intent:faculty, faculty_name:"X", direct_field:"experience"
 - "X department/dept" → intent:faculty, faculty_name:"X", direct_field:"department"
 
+CIRCULAR RULES:
+- Questions about a circular, notice, dress code, hostel rules, campus rules, what is allowed/not allowed, instructions from the principal/college → intent:"circular"
+- Dates of exams/holidays/events from the academic calendar stay intent:"calendar"
+- "dress code for girls in hostel"→{"intent":"circular"} | "is there any circular about hostel timings"→{"intent":"circular"} | "can boys wear shorts on campus"→{"intent":"circular"}
+
 CALENDAR RULES:
 - Specific date→date:"YYYY-MM-DD" | month only→month:"YYYY-MM" | current year:2026
 - All relative date words (today, yesterday, tomorrow, day before yesterday, day after tomorrow,
@@ -108,7 +113,7 @@ CALENDAR RULES:
 - "co curricular activity 1/2/first/second" → event_type:"co_curricular", event_name:null, is_list_query:false — never guess the event_name from ordinals
 - Only set event_name when user explicitly says the event's actual name (e.g. "Anaadyanta", "MSE-1")
 
-EVENT NAMES: mse1/mse-1/mid sem 1/MSE1/mse 1→"MSE-1" | mse2→"MSE-2" | see theory→"SEE (Theory)" | see practicals→"SEE (Practicals)" | see/end sem/final exam→"SEE (Theory)" | anaadyanta/fest/college fest→"Anaadyanta" | summer vacation→"Summer Vacations" | classes start/coc→"Commencement of Classes" | lwd/last working day/sem end→"Last Working Day" | cie ledger/ledger submission→"CIE Ledger Submission | even semester backlog/backlog registration even/even backlog → Registration for Even Semester Backlog Courses|summer term backlog/summer backlog/backlog summer → Registration Summer Term Backlog Courses"
+EVENT NAMES: mse1/mse-1/mid sem 1/MSE1/mse 1→"MSE-1" | mse2/MSE 2→"MSE-2" | see theory→"SEE (Theory)" | see practicals→"SEE (Practicals)" | see/end sem/final exam→"SEE (Theory)" | anaadyanta/fest/college fest→"Anaadyanta" | summer vacation→"Summer Vacations" | classes start/coc→"Commencement of Classes" | lwd/last working day/sem end→"Last Working Day" | cie ledger/ledger submission→"CIE Ledger Submission | even semester backlog/backlog registration even/even backlog → Registration for Even Semester Backlog Courses|summer term backlog/summer backlog/backlog summer → Registration Summer Term Backlog Courses"
 
 EVENT TYPES: holiday/no college/off→"holiday" | registration→"registration" | compensatory/working saturday→"compensatory working days" | fest/co curricular→"co_curricular" | working days/class days→"teaching days" | saturday holiday→"saturday holidays" | general/named holiday→"general holidays" | link holiday→"link holidays" | exam queries→use event_name not event_type
 
@@ -159,6 +164,7 @@ EXAMPLES:
 "list faculties who take AIML" → {intent:subjects}
 "List the teacher who takes BDT"->{intent:subjects}
 "When does classes end?"->{intent:calendar,event_name:End of Classes}
+"When does MSE 2 start?"->{intent:calendar,event_name:MSE-2}
 """
 def parse_query(user_query: str, chat_history: list = None) -> dict:
     

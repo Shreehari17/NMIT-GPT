@@ -1,7 +1,7 @@
 from .retriever import retrieve_top_chunks
 from .llm_interface import generate_llm_answer
 from .query_parser import parse_query
-
+from .circular_search import answer_from_circulars
 from .sql_queries import (
     query_timetable,
     query_subjects,
@@ -62,7 +62,7 @@ def _prepare_context(chunks: list, params: dict = None) -> str:
 
     if len(context) > MAX_CHARS:
         context = context[:MAX_CHARS] + "\n...[Context Truncated]"
-        return context
+    return context
 
 
 def build_sql_prompt(
@@ -710,6 +710,23 @@ def answer_query(
         "general"
     )
 
+    original_query = user_query   # untouched copy, used for circular search
+    # Pre-resolve ALL relative date/time words in Python 
+    user_query = _inject_temporal_context(user_query)
+
+    parsed = parse_query(user_query, chat_history=chat_history)
+    print("PARSED:", parsed)
+    print(f"PARSE TIME: {time.time() - start:.2f}s")
+    
+    intent = parsed.get("intent", "general")
+
+    # Circulars: explicit circular questions, plus any "general" question a circular can answer
+    if intent in ("circular", "general"):
+        circ = answer_from_circulars(original_query, chat_history=chat_history, force=(intent == "circular"))
+        if circ:
+            print(f"CIRCULAR ANSWER TIME: {time.time() - start:.2f}s")
+            return circ
+
     t2 = time.time()
 
     # ========================================================
@@ -1017,7 +1034,8 @@ def answer_query(
     # ========================================================
     # CALENDAR
     # ========================================================
-
+    elif intent == "calendar":
+        chunks = retrieve_chunks(parsed)
     elif intent == "faculty":
 
         print(

@@ -1,6 +1,6 @@
 create function match_documents (
     query_embedding vector(768),
-    match_count int default 5
+    match_count int default 5,
     filter_source text default null
 )
 returns table (

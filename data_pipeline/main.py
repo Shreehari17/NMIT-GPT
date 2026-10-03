@@ -66,3 +66,18 @@ print(f"✓ Extracted {len(events)} events")
 
 load_calendar_to_supabase(events)
 print("Data Loaded Successfully ✅")
+
+
+# ---------------- Circulars (bulk load from a folder; the admin page does the same one at a time) ----------------
+# Put circular PDFs in data_pipeline/data/circulars/ and run:  python main.py
+import glob
+import os
+from pipeline.extract_text import extract_circular, normalize_circular
+from pipeline.chunk_and_embed import embed_circular
+
+for pdf in glob.glob("data/circulars/*.pdf"):
+    row, warnings = normalize_circular(extract_circular(pdf), file_name=os.path.basename(pdf))
+    for w in warnings:
+        print("  WARNING:", w)
+    if row["title"] and row["full_text"]:
+        embed_circular(row)

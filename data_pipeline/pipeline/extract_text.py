@@ -1,4 +1,3 @@
-
 import pandas as pd
 from pipeline.utils import (
     clean_date,
@@ -195,3 +194,111 @@ def _parse_json(raw: str) -> list[dict]:
         if raw.startswith("json"):
             raw = raw[4:]
     return json.loads(raw.strip())
+
+
+# ============================================================
+# CIRCULARS  (PDF -> Gemini -> structured dict)
+# ============================================================
+import re
+from pipeline.utils import CIRCULAR_CATEGORIES, normalize_date
+
+CIRCULAR_PROMPT = """You are reading an official college circular. It may be a scanned or photographed PDF
+with a letterhead, a rubber stamp, handwriting and a signature.
+
+Return ONLY one valid JSON object (no markdown, no code fences, no commentary) with exactly these keys:
+
+{
+  "circular_no": "reference number printed at the top, e.g. NMIT/Circular/2026-27/14343 (include handwritten serial parts). null if absent",
+  "circular_date": "date of the circular as YYYY-MM-DD, e.g. 17th September 2026 -> 2026-09-17. null if absent",
+  "title": "the subject line, without the word 'Sub:'",
+  "category": "exactly one of: __CATEGORIES__",
+  "issued_by": "name and designation of the signatory, e.g. Dr. H C Nagaraj, Principal. null if absent",
+  "applies_to": "who must follow it, e.g. Hostellers / All students / Faculty / Final year students",
+  "summary": "2-3 plain sentences describing what the circular says",
+  "full_text": "the complete body text, following the rules below"
+}
+
+Rules for full_text:
+- Copy the body word for word. Never paraphrase, shorten, translate or add anything.
+  Keep every number, length, time, date, amount and name exactly as printed.
+- Exclude: letterhead, reference number, date line, the 'Sub:' line, signature, stamp,
+  the 'CC to' list, and the phone / fax / email / website footer.
+- Begin with the opening paragraph (if there is one) as plain text, with no heading.
+- Every heading or sub-heading in the body (for example 'General Guidelines (Applicable to All)',
+  'For Girl Hostellers') becomes its own line starting with '## ' followed by the text under it.
+  Remove the asterisks and trailing colons used for emphasis in headings.
+- Keep numbered points on separate lines with their numbers (1., 2., ...).
+  Join lines that were only wrapped by the page width.
+- Put a closing sentence such as a request to cooperate under the heading '## Note'.
+- If the circular has no sub-headings, write the body as plain paragraphs with no '## ' lines.
+- If there is a table, write each row as one line with cells separated by ' | '.
+""".replace("__CATEGORIES__", " | ".join(CIRCULAR_CATEGORIES))
+
+
+def _parse_json_object(raw: str) -> dict:
+    raw = (raw or "").strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    data = json.loads(raw.strip())
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data
+
+
+def extract_circular(pdf_path: str) -> dict:
+    """Upload the circular PDF to Gemini and return the raw dict it produced."""
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    uploaded_file = client.files.upload(
+        file=pdf_path,
+        config={"mime_type": "application/pdf", "display_name": "Circular"}
+    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[uploaded_file, CIRCULAR_PROMPT],
+            config={"response_mime_type": "application/json", "temperature": 0},
+        )
+    finally:
+        try:
+            client.files.delete(name=uploaded_file.name)
+        except Exception:
+            pass
+    return _parse_json_object(response.text)
+
+
+def normalize_circular(raw: dict, file_name: str = ""):
+    """Clean Gemini's output into the row the admin reviews. Returns (row, warnings)."""
+    warnings = []
+    title = re.sub(r"^\s*sub\s*[:\-]\s*", "", str(raw.get("title") or ""), flags=re.I).strip()
+    category = str(raw.get("category") or "general").strip().lower().replace(" ", "_")
+    if category not in CIRCULAR_CATEGORIES:
+        warnings.append(f"Category '{category}' is not in the standard list; set to 'general'.")
+        category = "general"
+
+    circular_date = normalize_date(raw.get("circular_date"))
+    if not circular_date:
+        warnings.append("Circular date was not found or unreadable - enter it as YYYY-MM-DD.")
+    if not str(raw.get("circular_no") or "").strip():
+        warnings.append("Circular number not found. A re-upload will be matched by title + date instead.")
+    if not title:
+        warnings.append("Title was not found - please enter it.")
+
+    full_text = (raw.get("full_text") or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    full_text = re.sub(r"\n{3,}", "\n\n", full_text)
+    if not full_text:
+        warnings.append("Body text is empty - the chatbot cannot answer from this circular until it is filled in.")
+
+    row = {
+        "circular_no": str(raw.get("circular_no") or "").strip(),
+        "title": title,
+        "category": category,
+        "circular_date": circular_date or "",
+        "issued_by": str(raw.get("issued_by") or "").strip(),
+        "applies_to": str(raw.get("applies_to") or "").strip(),
+        "summary": str(raw.get("summary") or "").strip(),
+        "full_text": full_text,
+        "file_name": file_name,
+    }
+    return row, warnings

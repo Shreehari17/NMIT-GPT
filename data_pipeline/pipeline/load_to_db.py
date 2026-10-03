@@ -276,3 +276,26 @@ def load_calendar_to_supabase(events: list[dict]):
     supabase.table("academic_calendar").insert(events).execute()
     print(f"✓ Inserted {len(events)} events into Supabase")
 
+
+
+# ============================================================
+# CIRCULARS  (stored ONLY in unified_embeddings, source_type='circular')
+# ============================================================
+def delete_circular_embeddings(circular_id):
+    supabase.table("unified_embeddings") \
+        .delete() \
+        .eq("source_type", "circular") \
+        .eq("source_id", circular_id) \
+        .execute()
+
+
+def fetch_circular_summaries():
+    """One entry per stored circular (chunk_index 0 carries the circular's metadata)."""
+    return (
+        supabase.table("unified_embeddings")
+        .select("source_id, metadata, created_at")
+        .eq("source_type", "circular")
+        .eq("chunk_index", 0)
+        .execute()
+        .data
+    )
