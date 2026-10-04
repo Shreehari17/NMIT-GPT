@@ -3,12 +3,18 @@ from .db import get_supabase_client
 import json
 import os
 from groq import Groq
-PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
+from openai import OpenAI
+#PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
+PARSER_MODEL="qwen3:8b"
 GROQ_PARSER_KEY = os.getenv("GROQ_API_KEY_PARSER")
 if not GROQ_PARSER_KEY:
-    raise ValueError("GROQ_PARSER_KEY is not set in environment variables")
+    raise ValueError("GROQ_API_KEY_PARSER is not set in environment variables")
 
-parser_client = Groq(api_key=GROQ_PARSER_KEY)
+#parser_client = Groq(api_key=GROQ_PARSER_KEY)
+parser_client = OpenAI(
+    base_url="http://localhost:11434/v1",
+    api_key="ollama"
+)
 def _load_event_names() -> list:
     try:
         supabase = get_supabase_client()
@@ -203,13 +209,13 @@ def parse_query(user_query: str, chat_history: list = None) -> dict:
 
     response = parser_client.chat.completions.create(
         model=PARSER_MODEL,
-        max_completion_tokens=700,   # gpt-oss reasoning tokens share this budget
-        reasoning_effort="low",
+        max_tokens=300,   
         messages=[
             {"role": "system", "content": PARSE_SYSTEM_PROMPT},
             {"role": "user", "content": user_content}
         ],
-        temperature=0
+        temperature=0,
+        extra_body={"think": False, "reasoning_effort": "none"}
     )
 
     raw = response.choices[0].message.content.strip()

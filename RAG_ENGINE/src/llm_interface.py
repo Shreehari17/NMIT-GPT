@@ -5,6 +5,7 @@ import os
 load_dotenv()
 
 
+
 MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")  # default to a smaller model for cost efficiency
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY_ANSWER")  # Use a separate key for answering to manage costs and rate limits
@@ -13,6 +14,7 @@ if not GROQ_API_KEY:
     raise ValueError("GROQ_API_KEY_ANSWER is not set in environment variables")
 
 client = Groq(api_key=GROQ_API_KEY)
+
 
 
 def generate_llm_answer(prompt: str, chat_history: list = None) -> str:

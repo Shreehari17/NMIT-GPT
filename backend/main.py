@@ -10,6 +10,7 @@ from backend.routes.admin_circulars import router as admin_circulars_router
 from backend.routes.debug import router as debug_router
 from backend.routes.auth import router as auth_router
 from backend.routes.health import router as health_router
+from backend.routes.admin_timetable import router as admin_timetable_router
 
 app = FastAPI(title="NMIT-GPT Backend")
 
@@ -38,3 +39,4 @@ app.include_router(admin_circulars_router)
 app.include_router(debug_router)
 app.include_router(auth_router)
 app.include_router(health_router)
+app.include_router(admin_timetable_router)

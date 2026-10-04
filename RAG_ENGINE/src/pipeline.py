@@ -714,9 +714,9 @@ def answer_query(
     # Pre-resolve ALL relative date/time words in Python 
     user_query = _inject_temporal_context(user_query)
 
-    parsed = parse_query(user_query, chat_history=chat_history)
-    print("PARSED:", parsed)
-    print(f"PARSE TIME: {time.time() - start:.2f}s")
+
+    #print("PARSED:", parsed)
+    #print(f"PARSE TIME: {time.time() - start:.2f}s")
     
     intent = parsed.get("intent", "general")
 
