@@ -10,7 +10,7 @@ from backend.routes.admin_circulars import router as admin_circulars_router
 from backend.routes.debug import router as debug_router
 from backend.routes.auth import router as auth_router
 from backend.routes.health import router as health_router
-
+from backend.routes.admin_faculty import router as admin_faculty_router
 app = FastAPI(title="Faculty-GPT Backend")
 
 # Wildcard origins let ANY website read responses that include the user's
@@ -33,8 +33,9 @@ app.add_middleware(
 
 app.include_router(ask_router)
 app.include_router(admin_router)
-app.include_router(admin_calendar_router)  # was never registered — calendar upload was dead code
+app.include_router(admin_calendar_router) 
 app.include_router(admin_circulars_router)
 app.include_router(debug_router)
 app.include_router(auth_router)
 app.include_router(health_router)
+app.include_router(admin_faculty_router)
