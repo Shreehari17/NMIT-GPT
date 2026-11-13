@@ -1,16 +1,10 @@
-from .llm_interface import MODEL
+
 from .db import get_supabase_client
 import json
 import os
-from groq import Groq
 from openai import OpenAI
-#PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
 PARSER_MODEL="qwen3:8b"
-GROQ_PARSER_KEY = os.getenv("GROQ_API_KEY_PARSER")
-if not GROQ_PARSER_KEY:
-    raise ValueError("GROQ_API_KEY_PARSER is not set in environment variables")
 
-#parser_client = Groq(api_key=GROQ_PARSER_KEY)
 parser_client = OpenAI(
     base_url="http://localhost:11434/v1",
     api_key="ollama"

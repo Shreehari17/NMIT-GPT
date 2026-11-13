@@ -1,54 +1,73 @@
-from groq import Groq
-from dotenv import load_dotenv
+
 import os
+from dotenv import load_dotenv
+from openai import OpenAI
+from datetime import datetime
 
 load_dotenv()
 
+MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:8b")
+OLLAMA_BASE_URL = os.getenv(
+    "OLLAMA_BASE_URL",
+    "http://localhost:11434/v1"
+)
 
-
-MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")  # default to a smaller model for cost efficiency
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY_ANSWER")  # Use a separate key for answering to manage costs and rate limits
-
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY_ANSWER is not set in environment variables")
-
-client = Groq(api_key=GROQ_API_KEY)
-
+client = OpenAI(
+    base_url=OLLAMA_BASE_URL,
+    api_key="ollama"
+)
 
 
 def generate_llm_answer(prompt: str, chat_history: list = None) -> str:
-    from datetime import datetime
+
     today = datetime.now().strftime("%A, %B %d, %Y")
 
     messages = [
         {
             "role": "system",
-            "content": f"""You are NMIT-GPT, an academic assistant for students of NMIT college.
-Your job is to answer questions about timetables, subjects, faculty, exams, and college calendar.
+            "content": f"""You are NMIT-GPT, an academic assistant
+for students of NMIT college.
+
+Your job is to answer questions about timetables, subjects,
+faculty, exams, and college calendar.
+
 Always reason carefully from the provided context.
 Today's date is {today}.
-'Who takes', 'who teaches', 'who handles' all mean the same — find the faculty name from the context and return it.
+
+'Who takes', 'who teaches', 'who handles' all mean the same.
+Find the faculty name from the provided context.
+
+Never invent information.
 Never refuse to answer if the context contains relevant information.
-Maintain context from the conversation history — pronouns like "he", "she", "they", "her", "him" refer to people mentioned earlier.
+
+Maintain context from conversation history.
+Pronouns like he, she, they, her and him refer to people
+mentioned earlier.
+
 Be concise and direct."""
         }
     ]
 
     if chat_history:
-        chat_history = chat_history[-4:]
-        chat_history = [
-            {"role": m["role"], "content": m["content"][:500]}
-            for m in chat_history
-        ]
-        messages.extend(chat_history)
+        messages.extend([
+            {
+                "role": m["role"],
+                "content": m["content"][:500]
+            }
+            for m in chat_history[-4:]
+            if m["role"] in ("user", "assistant")
+        ])
 
-    messages.append({"role": "user", "content": prompt})
+    messages.append({
+        "role": "user",
+        "content": prompt
+    })
 
-    response = client.chat.completions.create(  # uses GROQ_API_KEY_ANSWER
+    response = client.chat.completions.create(
         model=MODEL,
-        max_completion_tokens=1200,  
-        reasoning_effort="low",       
         messages=messages,
+        temperature=0,
+        max_tokens=1200
     )
-    return response.choices[0].message.content
+
+    return response.choices[0].message.content or ""
