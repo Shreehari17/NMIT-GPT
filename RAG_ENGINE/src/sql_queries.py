@@ -1,4 +1,5 @@
 from .db import get_supabase_client
+from .timetable_slots import canonical_slot, slot_variants, slot_sort_key, teaching_period, TEACHING_SLOTS
 import calendar as cal_module
 from collections import defaultdict
 import re
@@ -138,9 +139,10 @@ def query_timetable(params: dict) -> list:
         query = query.eq("day_of_week", params["day"])
     if params.get("period"):
         raw = str(params["period"]).lower().strip()
-        time_slot = TIME_SLOT_MAP.get(raw)
-        if time_slot:
-            query = query.eq("time_slot", time_slot)
+        time_slot = resolve_time_slot(raw)
+        if not time_slot:
+            return []
+        query = query.in_("time_slot", slot_variants(time_slot))
 
     timetable_rows = query.execute().data
     
@@ -151,10 +153,12 @@ def query_timetable(params: dict) -> list:
     subject_codes = list({row["subject_code"] for row in timetable_rows if row.get("subject_code")})
 
     # STEP 3: fetch matching subjects + faculty
-    subjects_rows = supabase.table("subjects") \
-        .select("subject_code, subject_name, class, faculty_id, faculty_biodata(name)") \
-        .in_("subject_code", subject_codes) \
+    subjects_rows = (
+        supabase.table("subjects")
+        .select("subject_code, subject_name, class, faculty_id, faculty_biodata(name)")
+        .in_("subject_code", subject_codes)
         .execute().data
+    ) if subject_codes else []
 
     # STEP 4: build lookup keyed by (subject_code, class) so that the same
     subject_map = {(row["subject_code"], row["class"]): row for row in subjects_rows}
@@ -1077,7 +1081,7 @@ def query_lab_availability(params: dict) -> list:
     if day:
         query = query.eq("day_of_week", day)
     if time_slot:
-        query = query.eq("time_slot", time_slot)
+        query = query.in_("time_slot", slot_variants(time_slot))
 
     tt_rows = query.execute().data
 
@@ -1119,7 +1123,11 @@ def resolve_time_slot(raw: str) -> str:
 
     slot = TIME_SLOT_MAP.get(raw.lower().strip())
     if slot:
-        return slot
+        return canonical_slot(slot)
+
+    # Exact time-slot intervals from either storage format.
+    if re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", raw.strip()):
+        return canonical_slot(raw)
 
     import re
     match = re.search(r'(\d{1,2}):?(\d{0,2})\s*(am|pm)?', raw.lower())
@@ -1159,7 +1167,7 @@ def resolve_time_slot(raw: str) -> str:
 
     for start, end, slot in slot_ranges:
         if start <= total_minutes <= end:
-            return slot
+            return canonical_slot(slot)
 
     return None
 
@@ -1181,7 +1189,7 @@ def format_timetable_chunks_v2(data: list) -> list:
         session_type = "Lab session" if row.get("is_lab") else "Lecture"
         activity = row.get("activity", "")
         time_slot = row.get("time_slot", "")
-        period_num = SLOT_TO_PERIOD.get(time_slot, "?")
+        period_num = teaching_period(time_slot)
 
         text = (
             f"On {row.get('day_of_week')}, "
@@ -1233,8 +1241,7 @@ def query_full_day_timetable(class_name: str, day: str) -> list:
     if not rows:
         return []
 
-    SLOT_ORDER = list(TIME_SLOT_MAP.values())
-    rows.sort(key=lambda r: SLOT_ORDER.index(r["time_slot"]) if r["time_slot"] in SLOT_ORDER else 99)
+    rows.sort(key=lambda r: slot_sort_key(r.get("time_slot")))
 
     subject_codes = list({r["subject_code"] for r in rows if r.get("subject_code")})
     subj_map = {}
@@ -1302,10 +1309,9 @@ def query_faculty_timetable(faculty_name: str, day: str = None) -> list:
         row["subject_info"] = {**info, "faculty_biodata": {"name": faculty_name_resolved}}
 
     DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-    SLOT_ORDER = list(TIME_SLOT_MAP.values())
     tt_rows.sort(key=lambda r: (
         DAY_ORDER.index(r["day_of_week"]) if r["day_of_week"] in DAY_ORDER else 99,
-        SLOT_ORDER.index(r["time_slot"]) if r["time_slot"] in SLOT_ORDER else 99
+        slot_sort_key(r.get("time_slot"))
     ))
     return tt_rows
 
@@ -1329,11 +1335,11 @@ def query_free_periods(class_name: str, day: str) -> list:
         .execute()
         .data
     )
-    occupied_slots = {r["time_slot"] for r in rows}
+    occupied_slots = {canonical_slot(r["time_slot"]) for r in rows}
     return [
         {"period": period, "time_slot": slot}
         for period, slot in ALL_SLOTS
-        if slot not in occupied_slots
+        if canonical_slot(slot) not in occupied_slots
     ]
 
 
@@ -1366,10 +1372,9 @@ def query_subject_schedule(subject: str, class_name: str = None) -> list:
         row["subject_info"] = subj_map.get((row["subject_code"], row["class"]), {})
 
     DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-    SLOT_ORDER = list(TIME_SLOT_MAP.values())
     tt_rows.sort(key=lambda r: (
         DAY_ORDER.index(r["day_of_week"]) if r["day_of_week"] in DAY_ORDER else 99,
-        SLOT_ORDER.index(r["time_slot"]) if r["time_slot"] in SLOT_ORDER else 99
+        slot_sort_key(r.get("time_slot"))
     ))
     return tt_rows
 
@@ -1385,7 +1390,7 @@ def query_class_at_period(day: str, period: str) -> list:
         supabase.table("timetable")
         .select("*")
         .eq("day_of_week", day)
-        .eq("time_slot", time_slot)
+        .in_("time_slot", slot_variants(time_slot))
         .execute()
         .data
     )
@@ -1399,7 +1404,7 @@ def query_class_at_period(day: str, period: str) -> list:
         .in_("subject_code", subject_codes)
         .execute()
         .data
-    )
+    ) if subject_codes else []
     subj_map = {(s["subject_code"], s["class"]): s for s in subj_rows}
     for row in rows:
         row["subject_info"] = subj_map.get((row["subject_code"], row["class"]), {})

@@ -23,7 +23,7 @@ _default_origins = "http://localhost:8000,http://localhost:5500,http://127.0.0.1
 ALLOWED_ORIGINS = [
     o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
 ]
-
+print("Allowed CORS origins:", ALLOWED_ORIGINS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,

@@ -2,6 +2,7 @@ import os
 import json
 import re
 import base64
+import logging
 from typing import Any
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
@@ -12,6 +13,12 @@ from google.genai import types
 
 from RAG_ENGINE.src.db import get_supabase_client
 from backend.auth_utils import get_current_user
+from backend.routes.timetable_validation import validate_extracted_rows
+from backend.routes.timetable_grid_extraction import extract_grid_first, parse_json
+from backend.routes.timetable_fullpage_extraction import extract_fullpage_days
+import asyncio
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -24,23 +31,16 @@ router = APIRouter(
 # CONFIG
 # ============================================================
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-if not GEMINI_API_KEY:
-    raise RuntimeError(
-        "GEMINI_API_KEY is not set. Add it to your .env file."
-    )
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+MAX_UPLOAD_BYTES = int(os.getenv("TIMETABLE_MAX_UPLOAD_BYTES", str(12 * 1024 * 1024)))
 
 
-GEMINI_MODEL = os.getenv(
-    "GEMINI_MODEL",
-    "gemini-2.5-flash"
-)
-
-
-gemini_client = genai.Client(
-    api_key=GEMINI_API_KEY
-)
+def get_gemini_client():
+    """Initialize only when extraction is requested; allow API startup without the key."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Timetable extraction is not configured on this server.")
+    return genai.Client(api_key=api_key)
 
 
 TIMETABLE_TABLE = "timetable"
@@ -181,6 +181,21 @@ The timetable may be:
 
 Your job is to extract the ACTUAL CLASS TIMETABLE.
 
+CRITICAL VISUAL GRID AUDIT — PERFORM BEFORE PRODUCING JSON:
+1. Identify the grid's exact COLUMN HEADERS, DAY ROWS and BORDERS; ignore the legend and important-dates box.
+2. Inspect EACH DAY independently from left to right. Never fill a day from another day's pattern.
+3. Map each written subject to the DAY ROW and COLUMN(S) it actually occupies. A label centered inside a horizontally merged cell belongs to that entire visible cell, not to adjacent cells.
+4. A vertically merged BREAK region may cover only SOME days. If a lab or other merged cell visibly crosses that time column on another day, DO NOT insert BREAK on that day.
+5. Similarly, never fill visually EMPTY afternoon columns, including a blank final period.
+6. For each output row, confirm the subject code occurs INSIDE the actual grid cell for that same day and time. Use the subject legend only to translate codes into names and explicit lab locations.
+7. Distinguish subject-code lookalikes character by character. A real cell labeled LA/PD must not be converted into the ordinary subject, a lab, or project work.
+8. Treat a merged multi-period session as occupying ONLY the visible covered columns; represent each covered instructional period separately. Exclude any genuinely separate BREAK/LUNCH cells.
+9. Review the Friday and Saturday rows separately immediately before finalizing; do not propagate a Friday project into Saturday or Saturday LA/PD into Friday.
+10. Output time slots unambiguously in 24-HOUR time. Afternoon '1:30' means 13:30, '2:25' means 14:25, '3:20' means 15:20, '4:15' means 16:15.
+11. Do not assume each weekday must have the same number of populated slots. Return fewer rows when cells are actually blank.
+12. When uncertain, add a precise warning with day/time and preserve uncertainty instead of guessing.
+
+
 Do NOT summarize the document.
 Do NOT describe the document.
 Do NOT invent missing information.
@@ -279,10 +294,10 @@ Examples:
 10:05-11:00
 11:00-11:55
 11:55-12:35
-12:35-01:30
-01:30-02:25
-02:25-03:20
-03:20-04:15
+12:35-13:30
+13:30-14:25
+14:25-15:20
+15:20-16:15
 
 Normalize obvious formatting variations into this format.
 
@@ -463,45 +478,14 @@ Do not invent a break or lunch where none is shown.
 
 10. CRITICAL MERGED BREAK COLUMN RULE
 
-The timetable may contain a vertically merged BREAK column.
+A vertically merged BREAK label may visually spell B R E A K down several day rows.
+That is ONE visual merged region, but the output must associate BREAK with EACH DAY
+whose row is actually covered by that region. DO NOT create separate letter rows.
+Do NOT output a single BREAK entry lacking a day.
 
-The word BREAK may visually appear as individual letters such as:
-
-B
-R
-E
-A
-K
-
-These letters are NOT separate timetable activities.
-
-They are parts of ONE vertically rendered "BREAK" label.
-
-NEVER create rows with:
-
-"B"
-"R"
-"E"
-"A"
-"K"
-
-as activities.
-
-Use the visual column borders and merged-cell structure to understand that these letters belong to ONE merged BREAK region.
-
-If the visual timetable clearly shows that the entire 09:55-10:05 column is the break column, create exactly ONE BREAK row for that time slot:
-
-{
-  "time_slot": "09:55-10:05",
-  "subject_code": null,
-  "activity": "BREAK",
-  "is_lab": false,
-  "lab_id": null
-}
-
-Do NOT create separate rows for individual letters.
-
-Do NOT treat letters from a vertically rendered merged label as subject codes, activities, or faculty information.
+IMPORTANT: the merged BREAK region may stop before a day where a lab crosses
+through the usual break column. For such a day, DO NOT create a BREAK row.
+Never assume an identical break on all six days: inspect its actual borders.
 
 --------------------------------------------------
 
@@ -792,35 +776,10 @@ column:
 
 EXAMPLE 5 — VERTICAL BREAK LABEL
 
-If the visual timetable shows:
-
-B
-R
-E
-A
-K
-
-vertically inside one merged column, these are NOT five different activities.
-
-Create ONE row:
-
-{
-  "time_slot": "09:55-10:05",
-  "subject_code": null,
-  "activity": "BREAK",
-  "is_lab": false,
-  "lab_id": null
-}
-
-Never create:
-
-"B"
-"R"
-"E"
-"A"
-"K"
-
-as separate rows.
+A single vertically rendered BREAK word spanning Monday, Wednesday and Thursday
+means a BREAK row for each of those three days (when the column visually overlaps
+those rows); it does NOT imply Tuesday has a break if Tuesday is occupied by a
+merged lab across that column. Never output individual letters as rows.
 
 --------------------------------------------------
 
@@ -998,7 +957,10 @@ async def extract_timetable(
     # Read file
     # --------------------------------------------------------
 
-    file_bytes = await file.read()
+    # Read one byte beyond the limit so oversized uploads cannot exhaust memory.
+    file_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Timetable document exceeds the upload size limit.")
 
     if not file_bytes:
 
@@ -1008,6 +970,16 @@ async def extract_timetable(
         )
 
 
+    # Reject obvious extension/content mismatches before sending to Gemini.
+    if extension == "pdf" and not file_bytes.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail="File content is not a valid PDF header.")
+    if extension == "png" and not file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(status_code=400, detail="File content does not match PNG format.")
+    if extension in {"jpg", "jpeg"} and not file_bytes.startswith(b"\xff\xd8\xff"):
+        raise HTTPException(status_code=400, detail="File content does not match JPEG format.")
+    if extension == "webp" and not (file_bytes.startswith(b"RIFF") and file_bytes[8:12] == b"WEBP"):
+        raise HTTPException(status_code=400, detail="File content does not match WEBP format.")
+
     mime_type = MIME_TYPES[extension]
 
 
@@ -1015,225 +987,172 @@ async def extract_timetable(
     # Gemini Vision
     # --------------------------------------------------------
 
+    mode = os.getenv("TIMETABLE_EXTRACTION_MODE", "fullpage").strip().lower()
+    client = None if mode == "local" else get_gemini_client()
     try:
-
-        response = gemini_client.models.generate_content(
-
-            model=GEMINI_MODEL,
-
-            contents=[
-
-                types.Part.from_bytes(
-                    data=file_bytes,
-                    mime_type=mime_type
-                ),
-
-                EXTRACTION_PROMPT
-
-            ]
-        )
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-
-        raise HTTPException(
-            status_code=503,
-            detail=f"Gemini extraction temporarily unavailable: {str(e)}"
-        )
-
-    # --------------------------------------------------------
-    # Parse Gemini response
-    # --------------------------------------------------------
-
-    try:
-
-        raw_text = response.text or ""
-
-        raw_text = clean_json_response(
-            raw_text
-        )
-
-        extracted = json.loads(
-            raw_text
-        )
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Gemini returned an invalid response. "
-                f"Parsing error: {str(e)}"
+        if mode == "local":
+            from backend.services.timetable_parser.local_pipeline import extract_local_timetable
+            extracted = await asyncio.to_thread(extract_local_timetable, file_bytes, filename)
+        elif mode == "fullpage":
+            extracted = await asyncio.to_thread(
+                extract_fullpage_days, client, GEMINI_MODEL, file_bytes, mime_type, filename
             )
-        )
-
+        elif mode == "grid":
+            extracted = await asyncio.to_thread(
+                extract_grid_first, client, GEMINI_MODEL, file_bytes, mime_type
+            )
+        elif mode == "legacy":
+            # Preserve V2 as a fallback for testing, never automatically
+            # substitute a bad result for a failed grid extraction.
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=GEMINI_MODEL,
+                contents=[types.Part.from_bytes(data=file_bytes, mime_type=mime_type), EXTRACTION_PROMPT],
+            )
+            extracted = parse_json(response.text)
+        else:
+            raise HTTPException(status_code=500, detail="Invalid timetable extraction mode.")
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        logger.warning("Timetable image/layout validation failed: %s", exc)
+        raise HTTPException(status_code=422, detail="Timetable document could not be read reliably. Check the image and try again.")
+    except Exception:
+        logger.exception("Timetable extraction provider failed")
+        raise HTTPException(status_code=503, detail="Timetable extraction is temporarily unavailable. Try again later.")
 
     # --------------------------------------------------------
-    # Normalize rows
+    # Validate and normalize for admin review (do not auto-save)
     # --------------------------------------------------------
-
-    raw_rows = extracted.get(
-        "rows",
-        []
-    )
-
-    rows = []
-
-    for row in raw_rows:
-
-        if not isinstance(row, dict):
-            continue
-
-        normalized = normalize_row(
-            row
+    try:
+        if not isinstance(extracted, dict):
+            raise ValueError("Extraction must return a JSON object.")
+        rows, warnings = validate_extracted_rows(
+            extracted.get("rows"), extracted.get("warnings", [])
         )
+    except ValueError:
+        logger.warning("Timetable extraction schema invalid")
+        raise HTTPException(status_code=502, detail="The extraction service returned an invalid timetable structure.")
 
-        # Ignore completely empty rows.
-        if not any(
-            [
-                normalized["class"],
-                normalized["day_of_week"],
-                normalized["time_slot"],
-                normalized["subject_code"],
-                normalized["activity"]
-            ]
-        ):
-            continue
-
-        rows.append(
-            normalized
-        )
-
-
-    warnings = extracted.get(
-        "warnings",
-        []
-    )
-
-    return {
-        "success": True,
-        "rows": rows,
-        "warnings": warnings,
-        "filename": filename
-    }
+    if not rows:
+        raise HTTPException(status_code=422, detail="No valid timetable entries were extracted. Check the original document.")
+    return {"success": True, "rows": rows, "warnings": warnings, "filename": filename}
 
 
 # ============================================================
-# SAVE ENDPOINT
+# REVIEW + SAFE SAVE ENDPOINTS
 # ============================================================
+from backend.services.timetable_save_validation import (
+    validate_save_rows, validate_department, is_subgroup
+)
+from fastapi import Query
+
+
+def _admin_only(user):
+    if getattr(user, "role", None) != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+
+def _revision(supabase, section):
+    result = supabase.rpc(
+        "timetable_class_revision", {"p_class": section}
+    ).execute()
+    revision = result.data
+    if not isinstance(revision, str) or len(revision) != 32:
+        raise RuntimeError("Invalid class revision; check installed SQL RPC")
+    return revision
+
+
+@router.post("/validate")
+async def validate_timetable_save(
+    request: TimetableSaveRequest,
+    current_user=Depends(get_current_user),
+):
+    _admin_only(current_user)
+    try:
+        section, rows = validate_save_rows(request.rows)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"success": True, "class": section,
+            "valid_rows": len(rows), "is_subgroup": is_subgroup(section)}
+
+
+class TimetableReplaceRequest(TimetableSaveRequest):
+    confirm_replace: bool = False
+    confirm_subgroup: bool = False
+    department: str
+    expected_revision: str
+
+
+@router.get("/existing")
+async def existing_timetable(
+    class_name: str = Query(min_length=1, max_length=80),
+    current_user=Depends(get_current_user),
+):
+    _admin_only(current_user)
+    try:
+        supabase = get_supabase_client()
+        revision = _revision(supabase, class_name)
+        result = (
+            supabase.table(TIMETABLE_TABLE)
+            .select('class,day_of_week,time_slot,subject_code,activity,is_lab,lab_id,Dept')
+            .eq('class', class_name).limit(501).execute()
+        )
+        rows = result.data or []
+        if len(rows) > 500:
+            raise RuntimeError('Existing timetable is too large to preview safely')
+    except Exception:
+        logger.exception("Could not read existing timetable or its revision")
+        raise HTTPException(status_code=503, detail="Could not preview existing timetable or its revision.")
+    return {"class": class_name, "rows": rows, "count": len(rows),
+            "revision": revision, "is_subgroup": is_subgroup(class_name),
+            "departments": sorted({str(r['Dept']) for r in rows if r.get('Dept')})}
+
 
 @router.post("/save")
 async def save_timetable(
-    request: TimetableSaveRequest,
-    current_user=Depends(get_current_user)
+    request: TimetableReplaceRequest,
+    current_user=Depends(get_current_user),
 ):
-
-    # --------------------------------------------------------
-    # Check admin
-    # --------------------------------------------------------
-
-    if getattr(current_user, "role", None) != "admin":
-
-        raise HTTPException(
-            status_code=403,
-            detail="Admin access required."
-        )
-
-
-    rows = request.rows
-
-    if not rows:
-
-        raise HTTPException(
-            status_code=400,
-            detail="No timetable rows were provided."
-        )
-
-
-    # --------------------------------------------------------
-    # Supabase
-    # --------------------------------------------------------
-
+    _admin_only(current_user)
     try:
-
-        supabase = get_supabase_client()
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Could not connect to Supabase: {str(e)}"
-        )
-
-
-    # --------------------------------------------------------
-    # Prepare rows
-    # --------------------------------------------------------
-
-    clean_rows = []
-
-    for row in rows:
-
-        clean_row = normalize_row(
-            row
-        )
-
-        if not any(
-            [
-                clean_row["class"],
-                clean_row["day_of_week"],
-                clean_row["time_slot"],
-                clean_row["subject_code"],
-                clean_row["activity"]
-            ]
-        ):
-            continue
-
-        clean_rows.append(
-            clean_row
-        )
-
-
-    if not clean_rows:
-
-        raise HTTPException(
-            status_code=400,
-            detail="No valid timetable rows found."
-        )
-
-
-    # --------------------------------------------------------
-    # Insert into timetable_updated
-    # --------------------------------------------------------
-
+        section, rows = validate_save_rows(request.rows)
+        department = validate_department(request.department)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not request.confirm_replace:
+        raise HTTPException(status_code=409, detail="Explicit replacement confirmation required.")
+    if is_subgroup(section) and not request.confirm_subgroup:
+        raise HTTPException(status_code=409, detail="Separate subgroup confirmation required.")
+    if not re.fullmatch(r'[0-9a-f]{32}', request.expected_revision):
+        raise HTTPException(status_code=422, detail="Invalid revision token; preview the class again.")
+    # The database function locks the exact class, checks the revision inside
+    # the same transaction, then replaces ONLY rows with class = section.
+    # An RPC failure never triggers a client-side delete/insert fallback.
     try:
+        result = get_supabase_client().rpc(
+            "replace_class_timetable_v2",
+            {"p_class": section, "p_rows": rows,
+             "p_department": department,
+             "p_expected_revision": request.expected_revision}
+        ).execute()
+    except Exception as exc:
+        from backend.services.timetable_db_errors import classify_save_error
 
-        result = (
-            supabase
-            .table(TIMETABLE_TABLE)
-            .insert(clean_rows)
-            .execute()
+        status, detail = classify_save_error(exc)
+        logger.exception(
+            "Timetable replace RPC failed: status=%s", status
         )
-
-    except Exception as e:
-
         raise HTTPException(
-            status_code=500,
-            detail=(
-                "Could not save timetable to "
-                f"{TIMETABLE_TABLE}: {str(e)}"
-            )
-        )
+            status_code=status,
+            detail=detail,
+        ) from exc
 
-
-    inserted_count = len(
-        result.data or clean_rows
-    )
-
-
-    return {
-        "success": True,
-        "inserted": inserted_count,
-        "table": TIMETABLE_TABLE
-    }
+    inserted = result.data
+    if not isinstance(inserted, int) or inserted != len(rows):
+        logger.error("Unexpected save RPC result: %r", inserted)
+        raise HTTPException(status_code=503, detail=(
+            "Unexpected response. Check database before retrying; do not double-save."))
+    return {"success": True, "inserted": inserted, "class": section,
+            "department": department, "mode": "atomic_class_replace_v2",
+            "subgroup_records_untouched": not is_subgroup(section)}

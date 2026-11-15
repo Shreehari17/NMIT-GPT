@@ -228,7 +228,7 @@
       implemented: true,
       extractUrl: `${API_BASE}/admin/timetable/extract`,
       saveUrl: `${API_BASE}/admin/timetable/save`,
-      accept: '.pdf,.xlsx,.xls',
+      accept: '.pdf',  // extraction endpoint currently supports PDF, not Excel
       columns: [
         { key: 'class', label: 'Class', type: 'text', width: '110px' },
         { key: 'day_of_week', label: 'Day', type: 'text', width: '110px' },
@@ -515,7 +515,7 @@
   async function saveData() {
     const m = MODULES[activeModule];
     const s = state[activeModule];
-    if (!s.rows.length) return;
+    if (!s.rows.length || s.saving) return;
 
     if (!m.implemented) {
       showToast(`${m.label} save backend isn't connected yet. Implement POST ${m.saveUrl.replace(API_BASE, '')} to enable this.`, 'error');
@@ -526,13 +526,83 @@
     renderPage();
 
     try {
+      if (activeModule === 'timetable') {
+        // Validate BEFORE touching the database. Never skip malformed rows.
+        const validation = await fetch(`${API_BASE}/admin/timetable/validate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ rows: s.rows }),
+        });
+        const checked = await validation.json();
+        if (!validation.ok) throw new Error(checked.detail || 'Timetable validation failed');
+
+        const existingResponse = await fetch(
+          `${API_BASE}/admin/timetable/existing?class_name=${encodeURIComponent(checked.class)}`,
+          { headers: { Authorization: `Bearer ${getToken()}` } }
+        );
+        const existing = await existingResponse.json();
+        if (!existingResponse.ok) throw new Error(existing.detail || 'Cannot preview existing timetable');
+        if (!/^[a-f0-9]{32}$/.test(existing.revision || '')) throw new Error('Missing revision protection; install v2 SQL first');
+
+        const oldDept = (existing.departments || []).join(', ');
+        const departmentInput = window.prompt(
+          `Department for ${checked.class} (required; stored in Dept):`,
+          oldDept && !oldDept.includes(',') ? oldDept : 'CSE'
+        );
+        if (departmentInput === null) return;
+        const department = departmentInput.trim();
+        if (!/^[A-Za-z][A-Za-z0-9 &/\-]{0,49}$/.test(department)) {
+          throw new Error('Enter a valid department (for example CSE).');
+        }
+
+        const preview = (existing.rows || []).slice(0, 8)
+          .map(r => `${r.day_of_week} ${r.time_slot}: ${r.subject_code || r.activity || 'blank'}`)
+          .join('\n');
+        const message =
+          `Class: ${checked.class} | Department: ${department}\n` +
+          `Existing rows to replace: ${existing.count}\n` +
+          `Reviewed rows to write: ${checked.valid_rows}\n` +
+          (oldDept ? `Existing department(s): ${oldDept}\n` : '') +
+          (existing.is_subgroup
+            ? 'SUBGROUP UPDATE: This replaces this subgroup alone.\n'
+            : 'Main class update: existing subgroup classes remain untouched.\n') +
+          (preview ? `\nFirst existing rows being replaced:\n${preview}\n` : '') +
+          '\nProceed only after verifying the proposed rows against the PDF and backing up current data.';
+        if (!window.confirm(message)) return;
+        if (existing.is_subgroup &&
+            !window.confirm(`SECOND CONFIRMATION: Replace subgroup ${checked.class} only?`)) return;
+
+        s._saveContext = {
+          department,
+          expected_revision: existing.revision,
+          confirm_subgroup: !!existing.is_subgroup,
+        };
+      }
+
       const res = await fetch(m.saveUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ events: s.rows }),
+        body: JSON.stringify(activeModule === 'timetable'
+          ? { rows: s.rows, confirm_replace: true, ...s._saveContext }
+          : { events: s.rows }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Save failed');
+      if (!res.ok) {
+        if (activeModule === 'timetable' && res.status === 503) {
+          throw new Error(
+            'Database response uncertain. Do NOT save again yet. ' +
+            'Refresh the existing timetable and verify whether the changes were stored. ' +
+            (data.detail || '')
+          );
+        }
+        if (activeModule === 'timetable' && res.status === 409) {
+          throw new Error(
+            'Timetable conflict. Refresh the existing timetable and review again. ' +
+            (data.detail || '')
+          );
+        }
+        throw new Error(data.detail || 'Save failed');
+      }
 
       showToast(`Saved ${data.inserted ?? s.rows.length} row(s) to the database.`, 'success');
       s.rows = [];
