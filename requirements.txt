@@ -1,1 +1,10 @@
-
+psycopg2-binary
+python-dotenv
+supabase
+sentence-transformers
+requests
+groq
+numpy
+fastapi
+uvicorn
+python-multipart

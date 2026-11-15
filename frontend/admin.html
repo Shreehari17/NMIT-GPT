@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NMIT-GPT · Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue-50: #eff6ff; --blue-100: #dbeafe; --blue-200: #bfdbfe;
+    --blue-400: #60a5fa; --blue-500: #3b82f6; --blue-600: #2563eb;
+    --blue-700: #1d4ed8; --blue-900: #1e3a8a;
+    --bg: #ffffff; --bg-secondary: #f8fafc; --bg-sidebar: #f1f5f9;
+    --bg-hover: #e8f0fe; --bg-input: #ffffff;
+    --border: #e2e8f0; --border-light: #f1f5f9;
+    --text-primary: #0f172a; --text-secondary: #475569; --text-muted: #94a3b8;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06); --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+    --accent: #2563eb; --accent-hover: #1d4ed8;
+    --green-50: #f0fdf4; --green-600: #16a34a; --green-700: #15803d;
+    --amber-50: #fffbeb; --amber-600: #d97706; --amber-700: #b45309;
+    --red-50: #fef2f2; --red-600: #dc2626; --red-700: #b91c1c;
+    --sidebar-width: 240px;
+  }
+  [data-theme="dark"] {
+    --bg: #0d1117; --bg-secondary: #161b22; --bg-sidebar: #0d1117;
+    --bg-hover: #1a2332; --bg-input: #161b22;
+    --border: #21262d; --border-light: #1a2332;
+    --text-primary: #e6edf3; --text-secondary: #8b949e; --text-muted: #484f58;
+    --accent: #3b82f6; --accent-hover: #2563eb;
+    --green-50: #052e13; --amber-50: #2a1e05; --red-50: #2a0e0e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Sora', sans-serif; background: var(--bg); color: var(--text-primary); height: 100vh; display: flex; overflow: hidden; }
+  button, input, textarea, select { font-family: inherit; }
+
+  /* ── LOGIN ── */
+  .login-screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); z-index: 500; }
+  .login-card { width: 340px; background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 32px; box-shadow: var(--shadow-md); }
+  .login-logo { width: 44px; height: 44px; background: linear-gradient(135deg, var(--blue-600), var(--blue-400)); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+  .login-logo svg { width: 22px; height: 22px; fill: white; }
+  .login-card h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .login-card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 5px; }
+  .field input { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 9px; background: var(--bg-input); color: var(--text-primary); font-size: 13.5px; outline: none; transition: border-color .2s; }
+  .field input:focus { border-color: var(--accent); }
+  .login-btn { width: 100%; padding: 11px; background: var(--accent); color: #fff; border: none; border-radius: 9px; font-weight: 600; font-size: 13.5px; cursor: pointer; margin-top: 6px; transition: background .2s; }
+  .login-btn:hover { background: var(--accent-hover); }
+  .login-error { font-size: 12.5px; color: var(--red-600); margin-top: 10px; display: none; }
+
+  /* ── SIDEBAR ── */
+  .sidebar { width: var(--sidebar-width); background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-header { padding: 20px 16px; border-bottom: 1px solid var(--border); }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--blue-600), var(--blue-400)); border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .logo-icon svg { width: 16px; height: 16px; fill: white; }
+  .logo-text { font-size: 14px; font-weight: 700; }
+  .logo-text span { color: var(--accent); }
+  .logo-sub { font-size: 10.5px; color: var(--text-muted); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; margin-top: 2px; margin-left: 42px; }
+  .nav { flex: 1; padding: 14px 10px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 3px; transition: all .15s; border: none; background: none; width: 100%; text-align: left; }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .nav-item.active { background: var(--bg-hover); color: var(--accent); font-weight: 600; }
+  .nav-badge { margin-left: auto; font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 20px; background: var(--amber-50); color: var(--amber-700); letter-spacing: .3px; }
+  .sidebar-bottom { padding: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .back-link { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); text-decoration: none; padding: 8px 10px; border-radius: 8px; transition: background .15s; }
+  .back-link:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .back-link svg { width: 14px; height: 14px; }
+  .logout-btn { font-size: 12px; color: var(--text-muted); background: none; border: none; cursor: pointer; text-align: left; padding: 4px 10px; }
+  .logout-btn:hover { color: var(--red-600); }
+
+  /* ── MAIN ── */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { height: 56px; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; flex-shrink: 0; }
+  .topbar h2 { font-size: 15px; font-weight: 700; }
+  .content { flex: 1; overflow-y: auto; padding: 28px 32px 60px; }
+  .content-inner { max-width: 880px; margin: 0 auto; }
+  .page-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 22px; line-height: 1.6; }
+
+  /* ── UPLOAD ── */
+  .dropzone { border: 2px dashed var(--border); border-radius: 14px; padding: 32px 24px; text-align: center; cursor: pointer; transition: all .2s; background: var(--bg-secondary); }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--bg-hover); }
+  .dropzone svg { width: 30px; height: 30px; color: var(--text-muted); margin-bottom: 10px; }
+  .dropzone-title { font-size: 13.5px; font-weight: 600; margin-bottom: 3px; }
+  .dropzone-sub { font-size: 12px; color: var(--text-muted); }
+  .file-input { display: none; }
+  .file-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 9px; padding: 7px 12px; font-size: 12.5px; margin-top: 12px; }
+  .file-chip svg { width: 14px; height: 14px; color: var(--accent); }
+  .file-chip button { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 15px; line-height: 1; padding: 0 0 0 4px; }
+
+  .action-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .btn { padding: 10px 18px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all .15s; display: inline-flex; align-items: center; gap: 7px; }
+  .btn svg { width: 14px; height: 14px; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-primary:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+  .btn-secondary { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--bg-hover); }
+  .btn-success { background: var(--green-600); color: #fff; }
+  .btn-success:hover:not(:disabled) { background: var(--green-700); }
+  .btn-success:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+  .btn-ghost-danger { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; }
+  .btn-ghost-danger:hover { color: var(--red-600); }
+  .btn-ghost-danger svg { width: 15px; height: 15px; }
+
+  /* ── BANNERS ── */
+  .banner { border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; margin-top: 16px; display: flex; gap: 10px; }
+  .banner svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
+  .banner-info { background: var(--blue-50); color: var(--blue-700); }
+  [data-theme="dark"] .banner-info { color: var(--blue-400); }
+  .banner-warn { background: var(--amber-50); color: var(--amber-700); }
+  .banner-error { background: var(--red-50); color: var(--red-700); }
+  .banner-success { background: var(--green-50); color: var(--green-700); }
+  .banner code { font-family: 'JetBrains Mono', monospace; background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 4px; }
+  .banner ul { margin: 6px 0 0 18px; }
+
+  /* ── REVIEW TABLE ── */
+  .review-section { margin-top: 26px; }
+  .review-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .review-head h3 { font-size: 13.5px; font-weight: 700; }
+  .review-count { font-size: 11.5px; color: var(--text-muted); font-weight: 500; }
+  .table-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead { background: var(--bg-secondary); }
+  th { text-align: left; padding: 10px 12px; font-weight: 600; color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 0; border-bottom: 1px solid var(--border-light); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td input[type=text], td input[type=date] { width: 100%; border: none; background: transparent; padding: 9px 12px; font-size: 12.5px; color: var(--text-primary); outline: none; font-family: inherit; }
+  td input[type=text]:focus, td input[type=date]:focus { background: var(--bg-hover); }
+  td.row-bad input { color: var(--red-600); }
+  td.checkbox-cell { text-align: center; padding: 9px 12px; }
+  td.action-cell { padding: 9px 10px; text-align: center; width: 36px; }
+  .table-scroll { overflow-x: auto; }
+  .row-warn-icon { color: var(--amber-600); }
+
+  .empty-state { text-align: center; padding: 30px 20px; color: var(--text-muted); font-size: 12.5px; }
+
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--text-primary); color: var(--bg); padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-md); z-index: 999; opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: var(--red-600); }
+  .toast.success { background: var(--green-600); }
+
+  .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ══════════ LOGIN ══════════ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>
+    <h1>Admin Sign In</h1>
+    <p>NMIT-GPT content management</p>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="loginUser" placeholder="admin" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="loginError">Invalid credentials. Please try again.</div>
+  </div>
+</div>
+
+<!-- ══════════ APP ══════════ -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>
+      <div class="logo-text">NMIT<span>-GPT</span></div>
+    </div>
+    <div class="logo-sub">Admin panel</div>
+  </div>
+  <nav class="nav" id="navList"></nav>
+  <div class="sidebar-bottom">
+    <a class="back-link" href="nmit-gpt.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to chat
+    </a>
+    <button class="logout-btn" onclick="logout()">Sign out</button>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar"><h2 id="pageTitle">Academic Calendar</h2></div>
+  <div class="content"><div class="content-inner" id="pageContent"></div></div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API_BASE = 'http://localhost:8000';
+
+  // Match whatever theme the main chat page is set to (light/dark).
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('nmit_theme') || 'light');
+
+  // ── MODULE CONFIG ──
+  // `implemented: false` modules have no backend route yet — the review/edit
+  // UI still works fully, admin can just add rows by hand until the
+  // corresponding /extract and /save routes exist.
+  const MODULES = {
+    calendar: {
+      label: 'Academic Calendar',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+      description: 'Upload the academic calendar PDF. Gemini extracts each event, you review and correct anything before it\'s saved to the database.',
+      implemented: true,
+      extractUrl: `${API_BASE}/admin/calendar/extract`,
+      saveUrl: `${API_BASE}/admin/calendar/save`,
+      accept: '.pdf',
+      eventTypes: ['holiday', 'exam', 'academic', 'co_curricular', 'registration', 'vacation'],
+      columns: [
+        { key: 'event_date', label: 'Date', type: 'date', width: '140px' },
+        { key: 'event_name', label: 'Event Name', type: 'text' },
+        { key: 'event_type', label: 'Type', type: 'select', width: '150px' },
+        { key: 'description', label: 'Description', type: 'text' },
+      ],
+      emptyRow: () => ({ id: uid(), event_date: '', event_name: '', event_type: 'academic', description: '' }),
+      isRowBad: (row, key) => key === 'event_date' && !/^\d{4}-\d{2}-\d{2}$/.test(row.event_date || ''),
+    },
+    timetable: {
+      label: 'Timetable',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg>`,
+      description: 'Upload the class timetable (Excel or PDF). Review the extracted schedule per class/day before saving.',
+      implemented: true,
+      extractUrl: `${API_BASE}/admin/timetable/extract`,
+      saveUrl: `${API_BASE}/admin/timetable/save`,
+      accept: '.pdf',  // extraction endpoint currently supports PDF, not Excel
+      columns: [
+        { key: 'class', label: 'Class', type: 'text', width: '110px' },
+        { key: 'day_of_week', label: 'Day', type: 'text', width: '110px' },
+        { key: 'time_slot', label: 'Time Slot', type: 'text', width: '130px' },
+        { key: 'subject_code', label: 'Subject Code', type: 'text', width: '130px' },
+        { key: 'activity', label: 'Activity', type: 'text' },
+        { key: 'is_lab', label: 'Lab?', type: 'checkbox', width: '60px' },
+        { key: 'lab_id', label: 'Lab ID', type: 'text', width: '100px' },
+      ],
+      emptyRow: () => ({ id: uid(), class: '', day_of_week: '', time_slot: '', subject_code: '', activity: '', is_lab: false, lab_id: '' }),
+      isRowBad: () => false,
+    },
+    circulars: {
+      label: 'Circulars',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>`,
+      description: 'Upload a circular (PDF). Gemini reads it; review the details and the body text (sections start with ##), then save. It is stored as searchable vectors so the chatbot can answer from it.',
+      implemented: true,
+      extractUrl: `${API_BASE}/admin/circulars/extract`,
+      saveUrl: `${API_BASE}/admin/circulars/save`,
+      accept: '.pdf',
+      eventTypes: ['dress_code','hostel','exam','academic','fees','event','holiday','placement','transport','library','discipline','general'],
+      columns: [
+        { key: 'circular_no', label: 'Circular No.', type: 'text', width: '170px' },
+        { key: 'title', label: 'Title', type: 'text', width: '240px' },
+        { key: 'category', label: 'Category', type: 'select', width: '140px' },
+        { key: 'circular_date', label: 'Date', type: 'date', width: '130px' },
+        { key: 'applies_to', label: 'Applies to', type: 'text', width: '140px' },
+        { key: 'issued_by', label: 'Issued by', type: 'text', width: '170px' },
+        { key: 'summary', label: 'Summary', type: 'textarea', width: '260px' },
+        { key: 'full_text', label: 'Body text (## = section)', type: 'textarea', width: '460px' },
+      ],
+      emptyRow: () => ({ id: uid(), circular_no: '', title: '', category: 'general', circular_date: '', applies_to: '', issued_by: '', summary: '', full_text: '', file_name: '' }),
+      isRowBad: (row, key) => (key === 'circular_date' && row.circular_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.circular_date)) || (key === 'title' && !row.title) || (key === 'full_text' && !row.full_text),
+    },
+  };
+
+  let activeModule = 'calendar';
+  // per-module state: file, rows, warnings, loading flags
+  const state = {};
+  Object.keys(MODULES).forEach(k => state[k] = { file: null, rows: [], warnings: [], extracting: false, saving: false });
+
+  function uid() { return 'r_' + Math.random().toString(36).slice(2, 10); }
+
+  // ── AUTH ──
+  function getToken() { return localStorage.getItem('nmit_admin_token'); }
+
+  async function doLogin() {
+    const username = document.getElementById('loginUser').value.trim();
+    const password = document.getElementById('loginPass').value;
+    const errEl = document.getElementById('loginError');
+    errEl.style.display = 'none';
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Invalid credentials.');
+      if (data.role !== 'admin') {
+        throw new Error('This account does not have admin access.');
+      }
+      localStorage.setItem('nmit_admin_token', data.access_token);
+      localStorage.setItem('nmit_admin_name', data.name);
+      document.getElementById('loginScreen').style.display = 'none';
+      init();
+    } catch (e) {
+      errEl.textContent = e.message || 'Invalid credentials, or the backend server (localhost:8000) is not running.';
+      errEl.style.display = 'block';
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('nmit_admin_token');
+    localStorage.removeItem('nmit_admin_name');
+    location.reload();
+  }
+
+  // ── NAV ──
+  function renderNav() {
+    const nav = document.getElementById('navList');
+    nav.innerHTML = Object.entries(MODULES).map(([key, m]) => `
+      <button class="nav-item ${key === activeModule ? 'active' : ''}" onclick="switchModule('${key}')">
+        ${m.icon}
+        <span>${m.label}</span>
+        ${!m.implemented ? '<span class="nav-badge">FRONTEND ONLY</span>' : ''}
+      </button>
+    `).join('');
+  }
+
+  function switchModule(key) {
+    activeModule = key;
+    renderNav();
+    renderPage();
+  }
+
+  // ── PAGE RENDER ──
+  function renderPage() {
+    const m = MODULES[activeModule];
+    const s = state[activeModule];
+    document.getElementById('pageTitle').textContent = m.label;
+
+    document.getElementById('pageContent').innerHTML = `
+      <p class="page-desc">${m.description}</p>
+
+      ${!m.implemented ? `
+        <div class="banner banner-warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div>This module's backend isn't connected yet. The review table below still works fully — add rows by hand, or wire up
+          <code>POST ${m.extractUrl.replace(API_BASE,'')}</code> and <code>POST ${m.saveUrl.replace(API_BASE,'')}</code> on the backend and this page will use them automatically.</div>
+        </div>
+      ` : ''}
+
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div class="dropzone-title">Click to upload, or drag a file here</div>
+        <div class="dropzone-sub">Accepted: ${m.accept.replaceAll(',', ', ')}</div>
+        ${s.file ? `
+          <div class="file-chip" onclick="event.stopPropagation()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            ${escapeHtml(s.file.name)}
+            <button onclick="clearFile()">&times;</button>
+          </div>` : ''}
+      </div>
+      <input type="file" id="fileInput" class="file-input" accept="${m.accept}" onchange="onFileSelected(this.files)">
+
+      <div class="action-row">
+        <button class="btn btn-primary" id="extractBtn" onclick="extractData()" ${!s.file || s.extracting ? 'disabled' : ''}>
+          ${s.extracting ? '<span class="spinner"></span> Extracting…' : 'Extract data'}
+        </button>
+        <button class="btn btn-secondary" onclick="addRow()">+ Add row manually</button>
+      </div>
+
+      ${s.warnings.length ? `
+        <div class="banner banner-warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div>${s.warnings.length} row(s) need attention before saving:
+            <ul>${s.warnings.slice(0, 6).map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
+          </div>
+        </div>
+      ` : ''}
+
+      <div class="review-section">
+        <div class="review-head">
+          <h3>Review & edit</h3>
+          <span class="review-count">${s.rows.length} row${s.rows.length === 1 ? '' : 's'}</span>
+        </div>
+        ${s.rows.length ? renderTable(m, s) : `<div class="table-wrap"><div class="empty-state">No rows yet. Upload a file and click "Extract data", or add a row manually.</div></div>`}
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-success" id="saveBtn" onclick="saveData()" ${!s.rows.length || s.saving ? 'disabled' : ''}>
+          ${s.saving ? '<span class="spinner"></span> Saving…' : `Confirm & save ${s.rows.length ? `(${s.rows.length})` : ''} to database`}
+        </button>
+      </div>
+    `;
+
+    const dz = document.getElementById('dropzone');
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.classList.remove('drag');
+      if (e.dataTransfer.files.length) onFileSelected(e.dataTransfer.files);
+    });
+  }
+
+  function renderTable(m, s) {
+    return `
+      <div class="table-wrap"><div class="table-scroll">
+        <table>
+          <thead><tr>
+            ${m.columns.map(c => `<th style="${c.width ? `width:${c.width}` : ''}">${c.label}</th>`).join('')}
+            <th style="width:36px"></th>
+          </tr></thead>
+          <tbody>
+            ${s.rows.map((row, i) => `
+              <tr>
+                ${m.columns.map(c => renderCell(m, row, i, c)).join('')}
+                <td class="action-cell">
+                  <button class="btn-ghost-danger" title="Delete row" onclick="deleteRow(${i})">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div></div>
+    `;
+  }
+
+  function renderCell(m, row, i, c) {
+    const bad = m.isRowBad(row, c.key);
+    if (c.type === 'checkbox') {
+      return `<td class="checkbox-cell"><input type="checkbox" ${row[c.key] ? 'checked' : ''} onchange="updateCell(${i}, '${c.key}', this.checked)"></td>`;
+    }
+    if (c.type === 'textarea') {
+      return `<td class="${bad ? 'row-bad' : ''}"><textarea rows="8" oninput="updateCell(${i}, '${c.key}', this.value)" style="width:100%; min-width:${c.width || '260px'}; border:none; background:transparent; padding:9px 12px; font-size:12.5px; line-height:1.5; color:var(--text-primary); outline:none; font-family:inherit; resize:vertical;">${escapeHtml(row[c.key] ?? '')}</textarea></td>`;
+    }
+    if (c.type === 'select') {
+      const options = m.eventTypes || [];
+      return `<td class="${bad ? 'row-bad' : ''}"><select onchange="updateCell(${i}, '${c.key}', this.value)" style="width:100%; border:none; background:transparent; padding:9px 12px; font-size:12.5px; color:var(--text-primary); outline:none; font-family:inherit;">
+        ${options.map(o => `<option value="${o}" ${row[c.key] === o ? 'selected' : ''}>${o.replace('_',' ')}</option>`).join('')}
+      </select></td>`;
+    }
+    const type = c.type === 'date' ? 'text' : c.type; // free text so partially-parsed dates are still visible/fixable
+    return `<td class="${bad ? 'row-bad' : ''}"><input type="text" value="${escapeAttr(row[c.key] ?? '')}" placeholder="${c.type === 'date' ? 'YYYY-MM-DD' : ''}" oninput="updateCell(${i}, '${c.key}', this.value)"></td>`;
+  }
+
+  // ── FILE / EXTRACT / SAVE ──
+  function onFileSelected(files) {
+    if (!files || !files.length) return;
+    state[activeModule].file = files[0];
+    renderPage();
+  }
+
+  function clearFile() {
+    state[activeModule].file = null;
+    document.getElementById('fileInput').value = '';
+    renderPage();
+  }
+
+  function addRow() {
+    const m = MODULES[activeModule];
+    state[activeModule].rows.push(m.emptyRow());
+    renderPage();
+  }
+
+  function deleteRow(i) {
+    state[activeModule].rows.splice(i, 1);
+    renderPage();
+  }
+
+  function updateCell(i, key, value) {
+    state[activeModule].rows[i][key] = value;
+    // live-clear the "bad" flag styling without a full re-render/jank while typing
+    const m = MODULES[activeModule];
+    if (!m.isRowBad(state[activeModule].rows[i], key)) {
+      state[activeModule].warnings = state[activeModule].warnings.filter(w => true);
+    }
+  }
+
+  async function extractData() {
+    const m = MODULES[activeModule];
+    const s = state[activeModule];
+    if (!s.file) return;
+
+    if (!m.implemented) {
+      // No backend route yet for this module — don't fabricate extracted
+      // data. Seed one editable row so the review UI can still be tried.
+      s.warnings = [];
+      if (!s.rows.length) s.rows.push(m.emptyRow());
+      showToast(`${m.label} extraction backend isn't connected yet — add rows manually below.`, 'error');
+      renderPage();
+      return;
+    }
+
+    s.extracting = true;
+    renderPage();
+
+    const form = new FormData();
+    form.append('file', s.file);
+
+    try {
+      const res = await fetch(m.extractUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Extraction failed');
+
+      s.rows = data.rows || data.events || [];
+      s.warnings = data.warnings || [];
+      showToast(`Extracted ${s.rows.length} row(s). Review before saving.`, 'success');
+    } catch (e) {
+      showToast(`Could not extract: ${e.message}`, 'error');
+    } finally {
+      s.extracting = false;
+      renderPage();
+    }
+  }
+
+  async function saveData() {
+    const m = MODULES[activeModule];
+    const s = state[activeModule];
+    if (!s.rows.length || s.saving) return;
+
+    if (!m.implemented) {
+      showToast(`${m.label} save backend isn't connected yet. Implement POST ${m.saveUrl.replace(API_BASE, '')} to enable this.`, 'error');
+      return;
+    }
+
+    s.saving = true;
+    renderPage();
+
+    try {
+      if (activeModule === 'timetable') {
+        // Validate BEFORE touching the database. Never skip malformed rows.
+        const validation = await fetch(`${API_BASE}/admin/timetable/validate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ rows: s.rows }),
+        });
+        const checked = await validation.json();
+        if (!validation.ok) throw new Error(checked.detail || 'Timetable validation failed');
+
+        const existingResponse = await fetch(
+          `${API_BASE}/admin/timetable/existing?class_name=${encodeURIComponent(checked.class)}`,
+          { headers: { Authorization: `Bearer ${getToken()}` } }
+        );
+        const existing = await existingResponse.json();
+        if (!existingResponse.ok) throw new Error(existing.detail || 'Cannot preview existing timetable');
+        if (!/^[a-f0-9]{32}$/.test(existing.revision || '')) throw new Error('Missing revision protection; install v2 SQL first');
+
+        const oldDept = (existing.departments || []).join(', ');
+        const departmentInput = window.prompt(
+          `Department for ${checked.class} (required; stored in Dept):`,
+          oldDept && !oldDept.includes(',') ? oldDept : 'CSE'
+        );
+        if (departmentInput === null) return;
+        const department = departmentInput.trim();
+        if (!/^[A-Za-z][A-Za-z0-9 &/\-]{0,49}$/.test(department)) {
+          throw new Error('Enter a valid department (for example CSE).');
+        }
+
+        const preview = (existing.rows || []).slice(0, 8)
+          .map(r => `${r.day_of_week} ${r.time_slot}: ${r.subject_code || r.activity || 'blank'}`)
+          .join('\n');
+        const message =
+          `Class: ${checked.class} | Department: ${department}\n` +
+          `Existing rows to replace: ${existing.count}\n` +
+          `Reviewed rows to write: ${checked.valid_rows}\n` +
+          (oldDept ? `Existing department(s): ${oldDept}\n` : '') +
+          (existing.is_subgroup
+            ? 'SUBGROUP UPDATE: This replaces this subgroup alone.\n'
+            : 'Main class update: existing subgroup classes remain untouched.\n') +
+          (preview ? `\nFirst existing rows being replaced:\n${preview}\n` : '') +
+          '\nProceed only after verifying the proposed rows against the PDF and backing up current data.';
+        if (!window.confirm(message)) return;
+        if (existing.is_subgroup &&
+            !window.confirm(`SECOND CONFIRMATION: Replace subgroup ${checked.class} only?`)) return;
+
+        s._saveContext = {
+          department,
+          expected_revision: existing.revision,
+          confirm_subgroup: !!existing.is_subgroup,
+        };
+      }
+
+      const res = await fetch(m.saveUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(activeModule === 'timetable'
+          ? { rows: s.rows, confirm_replace: true, ...s._saveContext }
+          : { events: s.rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (activeModule === 'timetable' && res.status === 503) {
+          throw new Error(
+            'Database response uncertain. Do NOT save again yet. ' +
+            'Refresh the existing timetable and verify whether the changes were stored. ' +
+            (data.detail || '')
+          );
+        }
+        if (activeModule === 'timetable' && res.status === 409) {
+          throw new Error(
+            'Timetable conflict. Refresh the existing timetable and review again. ' +
+            (data.detail || '')
+          );
+        }
+        throw new Error(data.detail || 'Save failed');
+      }
+
+      showToast(`Saved ${data.inserted ?? s.rows.length} row(s) to the database.`, 'success');
+      s.rows = [];
+      s.warnings = [];
+      s.file = null;
+    } catch (e) {
+      showToast(`Could not save: ${e.message}`, 'error');
+    } finally {
+      s.saving = false;
+      renderPage();
+    }
+  }
+
+  // ── UTIL ──
+  function showToast(msg, kind) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `toast show ${kind || ''}`;
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(() => t.classList.remove('show'), 4200);
+  }
+
+  function escapeHtml(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function escapeAttr(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ── INIT ──
+  function init() {
+    renderNav();
+    renderPage();
+  }
+
+  if (getToken()) {
+    document.getElementById('loginScreen').style.display = 'none';
+    init();
+  }
+</script>
+</body>
+</html>
