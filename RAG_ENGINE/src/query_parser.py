@@ -31,8 +31,8 @@ elif PARSER_PROVIDER == "ollama":
             "OLLAMA_BASE_URL",
             "http://localhost:11434/v1"
         ),
-        api_key="ollama",
-        timeout=45.0,
+        api_key=os.getenv("OLLAMA_API_KEY", "ollama"),
+        timeout=float(os.getenv("OLLAMA_TIMEOUT", "120")),
     )
 
 else:
