@@ -36,7 +36,25 @@ app.include_router(ask_router)
 app.include_router(admin_router)
 app.include_router(admin_calendar_router)  # was never registered — calendar upload was dead code
 app.include_router(admin_circulars_router)
-app.include_router(debug_router)
+if os.getenv("ENABLE_DEBUG_ROUTES", "false").lower() == "true":
+    app.include_router(debug_router)
 app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(admin_timetable_router)
+
+# Serve the frontend from the same origin as the API.
+from pathlib import Path
+from fastapi.responses import FileResponse
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+
+@app.get("/", include_in_schema=False)
+@app.get("/nmit-gpt.html", include_in_schema=False)
+def student_frontend():
+    return FileResponse(FRONTEND_DIR / "nmit-gpt.html")
+
+
+@app.get("/admin", include_in_schema=False)
+@app.get("/admin.html", include_in_schema=False)
+def admin_frontend():
+    return FileResponse(FRONTEND_DIR / "admin.html")

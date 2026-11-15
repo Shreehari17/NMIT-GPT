@@ -2,19 +2,42 @@ from .llm_interface import MODEL
 from .db import get_supabase_client
 import json
 import os
-from groq import Groq
 from openai import OpenAI
-#PARSER_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b")
-PARSER_MODEL="qwen3:8b"
-GROQ_PARSER_KEY = os.getenv("GROQ_API_KEY_PARSER")
-if not GROQ_PARSER_KEY:
-    raise ValueError("GROQ_API_KEY_PARSER is not set in environment variables")
 
-#parser_client = Groq(api_key=GROQ_PARSER_KEY)
-parser_client = OpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="ollama"
-)
+PARSER_PROVIDER = os.getenv("PARSER_PROVIDER", "ollama").lower()
+
+if PARSER_PROVIDER == "groq":
+    PARSER_MODEL = os.getenv(
+        "PARSER_MODEL",
+        "openai/gpt-oss-120b"
+    )
+    parser_key = os.getenv("GROQ_API_KEY_PARSER")
+
+    if not parser_key:
+        raise ValueError(
+            "GROQ_API_KEY_PARSER is required when PARSER_PROVIDER=groq"
+        )
+
+    parser_client = OpenAI(
+        base_url="https://api.groq.com/openai/v1",
+        api_key=parser_key,
+        timeout=30.0,
+    )
+
+elif PARSER_PROVIDER == "ollama":
+    PARSER_MODEL = os.getenv("PARSER_MODEL", "qwen3:8b")
+    parser_client = OpenAI(
+        base_url=os.getenv(
+            "OLLAMA_BASE_URL",
+            "http://localhost:11434/v1"
+        ),
+        api_key="ollama",
+        timeout=45.0,
+    )
+
+else:
+    raise ValueError(f"Unsupported PARSER_PROVIDER: {PARSER_PROVIDER}")
+
 def _load_event_names() -> list:
     try:
         supabase = get_supabase_client()
@@ -207,16 +230,29 @@ def parse_query(user_query: str, chat_history: list = None) -> dict:
 
     user_content = f"Recent conversation:\n{history_context}\nCurrent query: {user_query}" if history_context else user_query
 
-    response = parser_client.chat.completions.create(
-        model=PARSER_MODEL,
-        max_tokens=300,
-        messages=[
+    request = {
+        "model": PARSER_MODEL,
+        "max_tokens": 500,
+        "messages": [
             {"role": "system", "content": PARSE_SYSTEM_PROMPT},
-            {"role": "user", "content": user_content}
+            {"role": "user", "content": user_content},
         ],
-        temperature=0,
-        extra_body={"think": False, "reasoning_effort": "none"}
-    )
+        "temperature": 0,
+    }
+
+    if PARSER_PROVIDER == "ollama":
+        request["extra_body"] = {
+            "think": False,
+            "reasoning_effort": "none",
+        }
+    else:
+        request["response_format"] = {"type": "json_object"}
+        request["extra_body"] = {
+            "reasoning_effort": "low",
+            "reasoning_format": "hidden",
+        }
+
+    response = parser_client.chat.completions.create(**request)
 
     raw = response.choices[0].message.content.strip()
 

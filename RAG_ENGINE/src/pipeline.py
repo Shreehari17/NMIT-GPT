@@ -1072,6 +1072,18 @@ def answer_query(
         parsed
         )
 
+        # Never substitute another faculty member for a requested name.
+        if parsed.get("faculty_name") and not raw_data:
+            return {
+                "query": user_query,
+                "answer": (
+                    f"I couldn't find a faculty record matching "
+                    f"'{parsed['faculty_name']}' in the NMIT database. "
+                    "Please check the spelling or provide the department."
+                ),
+                "chunks_used": []
+            }
+
         # ----------------------------------------------------
         # DIRECT HOD ANSWER
         # ----------------------------------------------------

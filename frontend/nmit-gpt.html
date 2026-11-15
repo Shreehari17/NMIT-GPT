@@ -328,8 +328,10 @@
 </main>
 
 <script>
-  const API_URL = 'http://localhost:8000/ask/';
-  const API_BASE = 'http://localhost:8000';
+  const API_BASE = window.location.port === '5500'
+    ? 'http://localhost:8000'
+    : window.location.origin;
+  const API_URL = `${API_BASE}/ask/`;
   let chats = [];
   let currentChatId = null;
   let isLoading = false;

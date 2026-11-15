@@ -193,7 +193,9 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  const API_BASE = 'http://localhost:8000';
+  const API_BASE = window.location.port === '5500'
+    ? 'http://localhost:8000'
+    : window.location.origin;
 
   // Match whatever theme the main chat page is set to (light/dark).
   document.documentElement.setAttribute('data-theme', localStorage.getItem('nmit_theme') || 'light');

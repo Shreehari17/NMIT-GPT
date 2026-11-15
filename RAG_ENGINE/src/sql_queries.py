@@ -929,8 +929,13 @@ def query_faculty(params: dict) -> list:
             filters_applied = True
     if params.get("department"):
         dept = params["department"].lower()
-        if "cse" in dept or "cs" in dept:
-            dept_search = "computer"
+        if dept.strip() in (
+            "cse",
+            "computer science",
+            "computer science and engineering",
+            "computer science & engineering",
+        ):
+            dept_search = "cse"
         else:
             dept_search = dept
         query = query.ilike("department", f"%{dept_search}%")
@@ -965,27 +970,6 @@ def query_faculty(params: dict) -> list:
         filters_applied = True
     result = query.execute().data
     print("RESULT COUNT:", len(result))
-    # FALLBACK
-    if not result:
-        result = supabase.table("faculty_biodata").select("""
-            faculty_id,
-            name,
-            designation,
-            department,
-            email,
-            joining_date,
-            past_experience,
-            educational_qualifications,
-            areas_of_interest,
-            achievements,
-            subjects_taught,
-            scholar_id,
-            orcid_id,
-            linkedin_id,
-            research,
-            faculty_shortform
-        """).limit(5).execute().data
-
     return result
 def query_lab(params: dict) -> list:
     supabase = get_supabase_client()

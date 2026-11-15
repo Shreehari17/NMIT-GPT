@@ -8,3 +8,8 @@ numpy
 fastapi
 uvicorn
 python-multipart
+openai
+google-genai
+httpx
+opencv-python-headless
+Pillow
