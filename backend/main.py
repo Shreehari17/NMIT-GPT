@@ -4,13 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.routes.ask import router as ask_router
-from backend.routes.admin_upload import router as admin_router
-from backend.routes.admin_calendar import router as admin_calendar_router
-from backend.routes.admin_circulars import router as admin_circulars_router
 from backend.routes.debug import router as debug_router
 from backend.routes.auth import router as auth_router
 from backend.routes.health import router as health_router
-from backend.routes.admin_timetable import router as admin_timetable_router
 
 app = FastAPI(title="NMIT-GPT Backend")
 
@@ -33,14 +29,23 @@ app.add_middleware(
 )
 
 app.include_router(ask_router)
-app.include_router(admin_router)
-app.include_router(admin_calendar_router)  # was never registered — calendar upload was dead code
-app.include_router(admin_circulars_router)
+# Heavy admin-processing modules are excluded from lightweight hosting.
+LITE_MODE = os.getenv("LITE_MODE", "false").lower() == "true"
+
+if not LITE_MODE:
+    from backend.routes.admin_upload import router as admin_router
+    from backend.routes.admin_calendar import router as admin_calendar_router
+    from backend.routes.admin_circulars import router as admin_circulars_router
+    from backend.routes.admin_timetable import router as admin_timetable_router
+
+    app.include_router(admin_router)
+    app.include_router(admin_calendar_router)
+    app.include_router(admin_circulars_router)
+    app.include_router(admin_timetable_router)
 if os.getenv("ENABLE_DEBUG_ROUTES", "false").lower() == "true":
     app.include_router(debug_router)
 app.include_router(auth_router)
 app.include_router(health_router)
-app.include_router(admin_timetable_router)
 
 # Serve the frontend from the same origin as the API.
 from pathlib import Path

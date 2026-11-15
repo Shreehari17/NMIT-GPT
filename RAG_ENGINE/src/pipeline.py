@@ -1,3 +1,4 @@
+import os
 from .retriever import retrieve_top_chunks
 from .llm_interface import generate_llm_answer
 from .query_parser import parse_query
@@ -719,6 +720,38 @@ def answer_query(
     #print(f"PARSE TIME: {time.time() - start:.2f}s")
 
     intent = parsed.get("intent", "general")
+
+    # Lite deployment: no local embedding model or vision model.
+    # Never attempt vector retrieval when heavy ML dependencies are absent.
+    if os.getenv("LITE_MODE", "false").lower() == "true":
+        if intent in ("general", "circular"):
+            return {
+                "query": user_query,
+                "answer": (
+                    "Semantic document and circular search is temporarily "
+                    "unavailable in this demo. You can ask about faculty, "
+                    "subjects, class timetables, labs, and academic dates."
+                ),
+                "chunks_used": [],
+            }
+
+        if intent == "lab" and parsed.get("lab_query_type") == "detail":
+            return {
+                "query": user_query,
+                "answer": (
+                    "Semantic lab-detail search is temporarily unavailable. "
+                    "You can ask about lab availability, room numbers, "
+                    "and structured lab information."
+                ),
+                "chunks_used": [],
+            }
+
+        if intent not in ("timetable", "subjects", "faculty", "lab", "calendar"):
+            return {
+                "query": user_query,
+                "answer": "This query type is not supported in the lightweight demo.",
+                "chunks_used": [],
+            }
 
     # Circulars: explicit circular questions, plus any "general" question a circular can answer
     if intent in ("circular", "general"):
