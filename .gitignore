@@ -205,3 +205,69 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+# macOS
+.DS_Store
+
+# Environment files and secrets
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Timetable development backups
+*.before-*
+
+# Local parser fixtures and generated outputs
+6A.pdf
+7A.pdf
+7A_parser_validation/
+
+# Temporary patch archives
+nmit*.zip
+nmit_*.zip
+
+# Local timetable extraction research and cached outputs
+/experiments/qwen_timetable/
+
+# Local timetable reference material
+/reference/7A_manual_spot_checks.csv
+
+# Mac-generated metadata
+.DS_Store
+# Research and extraction outputs
+/experiments/
+/reference/
+/7A_parser_validation/
+
+# Local timetable fixtures
+/6A.pdf
+/7A.pdf
+
+# Local development backups
+*.before-*
+
+# Patch archives
+/nmit*.zip
+
+# macOS
+.DS_Store
+
+# Environment configuration
+.env
+.env.*
+!.env.example
+
+# Python caches
+__pycache__/
+.pytest_cache/
+
+# Virtual environments
+.venv/

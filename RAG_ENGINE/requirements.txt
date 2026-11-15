@@ -1,0 +1,7 @@
+supabase
+python-dotenv
+sentence-transformers
+numpy
+requests
+groq
+openai
